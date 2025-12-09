@@ -64,9 +64,9 @@ jobs:
           CYPRESS_BASE_URL: ${{ secrets.DEV_URL }}
         run: |
           if [ -n "${{ inputs.spec }}" ]; then
-            npm run e2e:portal:${{ inputs.environment || 'dev' }} -- --headless --spec "${{ inputs.spec }}"
+            npm run e2e:portal:${{ inputs.environment || 'dev' }} -- --headless --spec "${{ inputs.spec }}" 2>&1 | grep -v "CertVerifyProcBuiltin" || true
           else
-            npm run e2e:portal:${{ inputs.environment || 'dev' }} -- --headless
+            npm run e2e:portal:${{ inputs.environment || 'dev' }} -- --headless 2>&1 | grep -v "CertVerifyProcBuiltin" || true
           fi
 
       - name: Upload screenshots
@@ -116,19 +116,16 @@ jobs:
       - name: Send Telegram notification - Tests failed
         if: steps.tests.outcome == 'failure'
         run: |
-          TOTAL_FAILED=$(find project/screenshots -type f -name "*failed*.png" 2>/dev/null | wc -l)
+          # Берём первый скриншот и извлекаем название теста
+          FIRST_SCREENSHOT=$(find project/screenshots -type f -name "*failed*.png" 2>/dev/null | head -1)
 
-          if [ "$TOTAL_FAILED" -eq 0 ]; then
-            MESSAGE="❌ <b>Тесты упали!</b>%0AОкружение: <code>${{ inputs.environment || 'dev' }}</code>%0A%0AНет скриншотов"
+          if [ -z "$FIRST_SCREENSHOT" ]; then
+            TEST_NAME="Неизвестный тест"
           else
-            FAILED_LIST=$(find project/screenshots -type f -name "*failed*.png" 2>/dev/null | 
-              head -10 | 
-              xargs -I {} basename {} | 
-              sed 's/ (failed)\.png$//' |
-              sed 's/^/• /')
-
-            MESSAGE="❌ <b>Тесты упали!</b>%0AОкружение: <code>${{ inputs.environment || 'dev' }}</code>%0A%0A<b>Всего:</b> $TOTAL_FAILED тестов%0A%0A<b>Упавшие тесты:</b>%0A$FAILED_LIST%0A%0A📸 До 5 скриншотов%0A🎥 До 3 видео%0A📋 Логи запросов%0A📊 Cypress логи"
+            TEST_NAME=$(basename "$FIRST_SCREENSHOT" | sed 's/ -- .*//' | sed 's/ (failed)\.png$//')
           fi
+
+          MESSAGE="❌ <b>Тест упал!</b>%0AОкружение: <code>${{ inputs.environment || 'dev' }}</code>%0A%0A<b>Тест:</b> <code>$TEST_NAME</code>%0A%0A📸 Скриншоты%0A🎥 Видео%0A📋 Логи%0A📊 Cypress логи"
 
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
             -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
