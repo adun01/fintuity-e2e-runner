@@ -22,6 +22,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Send Telegram notification - Tests started
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d "text=🚀 <b>E2E тесты запущены</b>%0AОкружение: <code>${{ inputs.environment || 'dev' }}</code>%0AURL: <code>${{ secrets.DEV_URL }}</code>" \
+            -d "parse_mode=HTML"
+
       - name: Clone repository from Bitbucket
         run: |
           git clone --depth 1 https://${{ secrets.BITBUCKET_USERNAME }}:${{ secrets.BITBUCKET_API_TOKEN }}@bitbucket.org/fintuity-team/e2e-tests.git project
@@ -48,6 +55,8 @@ jobs:
         run: npm ci
 
       - name: Run E2E tests
+        id: tests
+        continue-on-error: true
         working-directory: project
         env:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
@@ -61,7 +70,7 @@ jobs:
           fi
 
       - name: Upload screenshots
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: screenshots-${{ inputs.environment }}-${{ github.run_number }}
@@ -83,16 +92,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: failed-requests-${{ inputs.environment }}-${{ github.run_number }}
-          path: project/requests-logs/
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Upload all requests logs
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: all-requests-${{ inputs.environment }}-${{ github.run_number }}
-          path: project/requests-logs/all-requests.json
+          path: project/failed-requests-logs/
           if-no-files-found: ignore
           retention-days: 7
 
@@ -104,3 +104,52 @@ jobs:
           path: project/portal-e2e/cypress/results/
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Send Telegram notification - Tests passed
+        if: steps.tests.outcome == 'success'
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d "text=✅ <b>Тесты прошли успешно!</b>%0AОкружение: <code>${{ inputs.environment || 'dev' }}</code>" \
+            -d "parse_mode=HTML"
+
+      - name: Send Telegram notification - Tests failed
+        if: steps.tests.outcome == 'failure'
+        run: |
+          # Подсчитываем упавшие тесты по скриншотам
+          TOTAL_FAILED=$(find project/screenshots -type f -name "*.png" 2>/dev/null | wc -l)
+          
+          if [ "$TOTAL_FAILED" -eq 0 ]; then
+            MESSAGE="❌ <b>Тесты упали!</b>%0AОкружение: <code>${{ inputs.environment || 'dev' }}</code>%0A%0AНет скриншотов упавших тестов"
+          else
+            # Получаем список упавших тестов (по именам файлов)
+            FAILED_LIST=$(find project/screenshots -type f -name "*failed*.png" 2>/dev/null | head -10 | xargs -I {} basename {} | sed 's/ -- /\n/g' | sed 's/ (failed)\.png//' | head -10)
+          
+            MESSAGE="❌ <b>Тесты упали!</b>%0AОкружение: <code>${{ inputs.environment || 'dev' }}</code>%0A%0A<b>Всего упало:</b> <code>$TOTAL_FAILED</code> тестов%0A%0A<b>Первые упавшие:</b>%0A<code>$FAILED_LIST</code>%0A%0A📸 Отправляем первые 5 скриншотов"
+          fi
+          
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d "text=$MESSAGE" \
+            -d "parse_mode=HTML"
+
+      - name: Send screenshots to Telegram
+        if: steps.tests.outcome == 'failure'
+        run: |
+          # Отправляем первые 5 скриншотов
+          SCREENSHOTS=$(find project/screenshots -type f -name "*failed*.png" 2>/dev/null | head -5)
+          
+          for screenshot in $SCREENSHOTS; do
+            TEST_NAME=$(basename "$screenshot" .png | sed 's/ -- / - /g')
+          
+            curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendPhoto" \
+              -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+              -F "photo=@$screenshot" \
+              -F "caption=📸 $TEST_NAME"
+          
+            sleep 1
+          done
+
+      - name: Fail workflow if tests failed
+        if: steps.tests.outcome == 'failure'
+        run: exit 1
