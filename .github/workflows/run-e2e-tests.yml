@@ -50,7 +50,7 @@ jobs:
       - name: Run E2E tests
         working-directory: project
         env:
-          BASE_EMAIL: ${{ secrets.GMAIL_USER }}
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
           CYPRESS_BASE_URL: ${{ secrets.DEV_URL }}
         run: |
