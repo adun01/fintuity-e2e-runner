@@ -181,54 +181,25 @@ jobs:
       - name: Send videos to Telegram
         if: steps.tests.outcome == 'failure'
         run: |
-          echo "🎥 Sending video for failed test..."
+          echo "🎥 Sending videos (only failed tests remain)..."
 
-          # Получаем имя упавшего теста из первого скриншота
-          FIRST_SCREENSHOT=$(find project/screenshots -type f -name "*failed*.png" 2>/dev/null | \
-            grep -v "before each hook" | \
-            grep -v "after each hook" | \
-            head -1)
+          find project/videos -type f -name "*.mp4" 2>/dev/null | \
+            head -5 | \
+            while IFS= read -r video; do
+              VIDEO_SIZE=$(stat -c%s "$video" 2>/dev/null || stat -f%z "$video" 2>/dev/null)
+              FILENAME=$(basename "$video" .mp4)
 
-          if [ -z "$FIRST_SCREENSHOT" ]; then
-            echo "⚠️ No failed test screenshots found"
-            exit 0
-          fi
+              if [ "$VIDEO_SIZE" -lt 52428800 ]; then
+                echo "🎥 Sending: $FILENAME ($(($VIDEO_SIZE / 1048576))MB)"
 
-          # Извлекаем имя теста из скриншота
-          # Пример: "Booking close btn test -- ... (failed).png"
-          # Берём всё до " -- "
-          TEST_NAME=$(basename "$FIRST_SCREENSHOT" | sed 's/ -- .*//')
-          echo "Failed test: $TEST_NAME"
+                curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendVideo" \
+                  -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+                  -F "video=@\"$video\"" \
+                  -F "caption=🎥 Failed: $FILENAME" || echo "⚠️ Failed to send"
 
-          # Ищем видео по паттерну имени
-          # Скриншот: "Booking close btn test"
-          # Видео: "booking-close-btn-test.cy.ts.mp4"
-          # Преобразуем: пробелы → дефисы, маленькие буквы
-          VIDEO_PATTERN=$(echo "$TEST_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
-          echo "Looking for video with pattern: $VIDEO_PATTERN"
-
-          # Ищем видео
-          VIDEO=$(find project/videos -type f -name "${VIDEO_PATTERN}*.mp4" 2>/dev/null | head -1)
-
-          if [ -z "$VIDEO" ]; then
-            echo "⚠️ No video found for failed test"
-            exit 0
-          fi
-
-          VIDEO_SIZE=$(stat -c%s "$VIDEO" 2>/dev/null || stat -f%z "$VIDEO" 2>/dev/null)
-          FILENAME=$(basename "$VIDEO" .mp4)
-
-          # Telegram лимит 50MB
-          if [ "$VIDEO_SIZE" -lt 52428800 ]; then
-            echo "🎥 Sending video: $FILENAME ($(($VIDEO_SIZE / 1048576))MB)"
-
-            curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendVideo" \
-              -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-              -F "video=@\"$VIDEO\"" \
-              -F "caption=🎥 $FILENAME" || echo "⚠️ Failed to send video"
-          else
-            echo "⚠️ Video too large: $FILENAME ($(($VIDEO_SIZE / 1048576))MB)"
-          fi
+                sleep 2
+              fi
+            done
 
       - name: Send request logs to Telegram
         if: steps.tests.outcome == 'failure'
