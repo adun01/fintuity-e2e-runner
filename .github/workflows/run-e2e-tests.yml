@@ -83,7 +83,16 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: failed-requests-${{ inputs.environment }}-${{ github.run_number }}
-          path: project/failed-requests-logs/
+          path: project/requests-logs/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload all requests logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-requests-${{ inputs.environment }}-${{ github.run_number }}
+          path: project/requests-logs/all-requests.json
           if-no-files-found: ignore
           retention-days: 7
 
