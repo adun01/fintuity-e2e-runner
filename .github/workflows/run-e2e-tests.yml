@@ -62,11 +62,12 @@ jobs:
           BASE_EMAIL: ${{ secrets.GMAIL_USER }}
           GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
           CYPRESS_BASE_URL: ${{ secrets.DEV_URL }}
+          ELECTRON_EXTRA_LAUNCH_ARGS: "--disable-gpu --no-sandbox --disable-dev-shm-usage --disable-software-rasterizer"
         run: |
           if [ -n "${{ inputs.spec }}" ]; then
-            npm run e2e:portal:${{ inputs.environment || 'dev' }} -- --browser ${{ inputs.browser || 'chrome' }} --spec "${{ inputs.spec }}"
+            npm run e2e:portal:${{ inputs.environment || 'dev' }} -- --browser ${{ inputs.browser || 'chrome' }} --headless --spec "${{ inputs.spec }}"
           else
-            npm run e2e:portal:${{ inputs.environment || 'dev' }} -- --browser ${{ inputs.browser || 'chrome' }}
+            npm run e2e:portal:${{ inputs.environment || 'dev' }} -- --browser ${{ inputs.browser || 'chrome' }} --headless
           fi
 
       - name: Upload screenshots
