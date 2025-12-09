@@ -12,15 +12,6 @@ on:
           - dev
           - staging
           - preprod
-      browser:
-        description: 'Browser'
-        required: true
-        default: 'chrome'
-        type: choice
-        options:
-          - chrome
-          - firefox
-          - edge
       spec:
         description: 'Test spec (optional, leave empty to run all tests)'
         required: false
@@ -62,19 +53,18 @@ jobs:
           BASE_EMAIL: ${{ secrets.GMAIL_USER }}
           GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
           CYPRESS_BASE_URL: ${{ secrets.DEV_URL }}
-          ELECTRON_EXTRA_LAUNCH_ARGS: "--disable-gpu --no-sandbox --disable-dev-shm-usage --disable-software-rasterizer"
         run: |
           if [ -n "${{ inputs.spec }}" ]; then
-            npm run e2e:portal:${{ inputs.environment || 'dev' }} -- --browser ${{ inputs.browser || 'chrome' }} --headless --spec "${{ inputs.spec }}"
+            npm run e2e:portal:${{ inputs.environment || 'dev' }} -- --headless --spec "${{ inputs.spec }}"
           else
-            npm run e2e:portal:${{ inputs.environment || 'dev' }} -- --browser ${{ inputs.browser || 'chrome' }} --headless
+            npm run e2e:portal:${{ inputs.environment || 'dev' }} -- --headless
           fi
 
       - name: Upload screenshots
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: screenshots-${{ inputs.environment }}-${{ inputs.browser }}-${{ github.run_number }}
+          name: screenshots-${{ inputs.environment }}-${{ github.run_number }}
           path: project/portal-e2e/cypress/screenshots/
           if-no-files-found: ignore
           retention-days: 7
@@ -83,7 +73,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: videos-${{ inputs.environment }}-${{ inputs.browser }}-${{ github.run_number }}
+          name: videos-${{ inputs.environment }}-${{ github.run_number }}
           path: project/portal-e2e/cypress/videos/
           if-no-files-found: ignore
           retention-days: 7
