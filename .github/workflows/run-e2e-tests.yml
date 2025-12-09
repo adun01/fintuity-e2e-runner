@@ -44,6 +44,14 @@ jobs:
           cache: 'npm'
           cache-dependency-path: project/package-lock.json
 
+      - name: Cache Cypress binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/Cypress
+          key: cypress-${{ runner.os }}-${{ hashFiles('project/package-lock.json') }}
+          restore-keys: |
+            cypress-${{ runner.os }}-
+
       - name: Install dependencies
         working-directory: project
         run: npm ci
