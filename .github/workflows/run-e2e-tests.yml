@@ -69,7 +69,7 @@ jobs:
           fi
 
           npm run e2e:portal:${{ inputs.environment || 'dev' }} -- --headless $SPEC_ARG 2>&1 | \
-            sed '/CertVerifyProcBuiltin/d; /ERROR: No matching issuer/d; /Certificate i=/d; /OU=Cypress Proxy Server Certificate/d'
+            grep --line-buffered -v "CertVerifyProcBuiltin\|ERROR: No matching issuer\|Certificate i=\|OU=Cypress Proxy Server Certificate"
 
           exit ${PIPESTATUS[0]}
 
