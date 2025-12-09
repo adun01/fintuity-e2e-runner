@@ -116,18 +116,24 @@ jobs:
       - name: Send Telegram notification - Tests failed
         if: steps.tests.outcome == 'failure'
         run: |
-          # Подсчитываем упавшие тесты по скриншотам
-          TOTAL_FAILED=$(find project/screenshots -type f -name "*.png" 2>/dev/null | wc -l)
-          
+          TOTAL_FAILED=$(find project/screenshots -type f -name "*failed*.png" 2>/dev/null | wc -l)
+
           if [ "$TOTAL_FAILED" -eq 0 ]; then
-            MESSAGE="❌ <b>Тесты упали!</b>%0AОкружение: <code>${{ inputs.environment || 'dev' }}</code>%0A%0AНет скриншотов упавших тестов"
+            MESSAGE="❌ <b>Тесты упали!</b>%0AОкружение: <code>${{ inputs.environment || 'dev' }}</code>%0A%0AНет скриншотов"
           else
-            # Получаем список упавших тестов (по именам файлов)
-            FAILED_LIST=$(find project/screenshots -type f -name "*failed*.png" 2>/dev/null | head -10 | xargs -I {} basename {} | sed 's/ -- /\n/g' | sed 's/ (failed)\.png//' | head -10)
-          
-            MESSAGE="❌ <b>Тесты упали!</b>%0AОкружение: <code>${{ inputs.environment || 'dev' }}</code>%0A%0A<b>Всего упало:</b> <code>$TOTAL_FAILED</code> тестов%0A%0A<b>Первые упавшие:</b>%0A<code>$FAILED_LIST</code>%0A%0A📸 Отправляем первые 5 скриншотов"
+            FAILED_LIST=$(find project/screenshots -type f -name "*failed*.png" 2>/dev/null | 
+              head -10 | 
+              xargs -I {} basename {} | 
+              sed 's/ (failed)\.png$//' |
+              sed 's/^/• /')
+
+            if [ "$TOTAL_FAILED" -gt 5 ]; then
+              MESSAGE="❌ <b>Тесты упали!</b>%0AОкружение: <code>${{ inputs.environment || 'dev' }}</code>%0A%0A<b>Всего:</b> $TOTAL_FAILED тестов%0A%0A<b>Первые 10:</b>%0A$FAILED_LIST%0A%0A📸 Отправляем 5 скриншотов"
+            else
+              MESSAGE="❌ <b>Тесты упали!</b>%0AОкружение: <code>${{ inputs.environment || 'dev' }}</code>%0A%0A<b>Всего:</b> $TOTAL_FAILED тестов%0A%0A$FAILED_LIST"
+            fi
           fi
-          
+
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
             -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
             -d "text=$MESSAGE" \
@@ -136,17 +142,16 @@ jobs:
       - name: Send screenshots to Telegram
         if: steps.tests.outcome == 'failure'
         run: |
-          # Отправляем первые 5 скриншотов
-          SCREENSHOTS=$(find project/screenshots -type f -name "*failed*.png" 2>/dev/null | head -5)
-          
-          for screenshot in $SCREENSHOTS; do
-            TEST_NAME=$(basename "$screenshot" .png | sed 's/ -- / - /g')
-          
+          find project/screenshots -type f -name "*failed*.png" 2>/dev/null | head -5 | while IFS= read -r screenshot; do
+            TEST_NAME=$(basename "$screenshot" .png | sed 's/ -- / - /g' | sed 's/ (failed)//')
+
+            echo "📸 Sending: $TEST_NAME"
+
             curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendPhoto" \
               -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-              -F "photo=@$screenshot" \
-              -F "caption=📸 $TEST_NAME"
-          
+              -F "photo=@\"$screenshot\"" \
+              -F "caption=📸 $TEST_NAME" || echo "⚠️ Failed to send"
+
             sleep 1
           done
 
