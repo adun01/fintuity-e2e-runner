@@ -1,0 +1,89 @@
+name: E2E Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Test environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - preprod
+      browser:
+        description: 'Browser'
+        required: true
+        default: 'chrome'
+        type: choice
+        options:
+          - chrome
+          - firefox
+          - edge
+      spec:
+        description: 'Test spec (optional, leave empty to run all tests)'
+        required: false
+        type: string
+
+jobs:
+  e2e-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clone repository from Bitbucket
+        run: |
+          git clone --depth 1 https://${{ secrets.BITBUCKET_USERNAME }}:${{ secrets.BITBUCKET_API_TOKEN }}@bitbucket.org/fintuity-team/e2e-tests.git project
+          cd project
+          git log -1 --oneline
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.18.1'
+          cache: 'npm'
+          cache-dependency-path: project/package-lock.json
+
+      - name: Install dependencies
+        working-directory: project
+        run: npm ci
+
+      - name: Run E2E tests
+        working-directory: project
+        env:
+          BASE_EMAIL: ${{ secrets.GMAIL_USER }}
+          GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
+          CYPRESS_BASE_URL: ${{ secrets.DEV_URL }}
+        run: |
+          if [ -n "${{ inputs.spec }}" ]; then
+            npm run e2e:portal:${{ inputs.environment || 'dev' }} -- --browser ${{ inputs.browser || 'chrome' }} --spec "${{ inputs.spec }}"
+          else
+            npm run e2e:portal:${{ inputs.environment || 'dev' }} -- --browser ${{ inputs.browser || 'chrome' }}
+          fi
+
+      - name: Upload screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-${{ inputs.environment }}-${{ inputs.browser }}-${{ github.run_number }}
+          path: project/portal-e2e/cypress/screenshots/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload videos
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: videos-${{ inputs.environment }}-${{ inputs.browser }}-${{ github.run_number }}
+          path: project/portal-e2e/cypress/videos/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload memory logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: memory-logs-${{ inputs.environment }}-${{ github.run_number }}
+          path: project/portal-e2e/cypress/results/
+          if-no-files-found: ignore
+          retention-days: 7
