@@ -54,6 +54,26 @@ jobs:
         working-directory: project
         run: npm ci
 
+      - name: Start IMAP Proxy Server
+        working-directory: project
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
+        run: |
+          npm run imap-proxy &
+          PROXY_PID=$!
+          echo "PROXY_PID=$PROXY_PID" >> $GITHUB_ENV
+
+          # Ждём пока сервер поднимется
+          echo "⏳ Waiting for proxy server..."
+          for i in {1..10}; do
+            if curl -s http://localhost:3100/health > /dev/null; then
+              echo "✅ Proxy server is ready"
+              break
+            fi
+            sleep 1
+          done
+
       - name: Run E2E tests
         id: tests
         continue-on-error: true
@@ -62,6 +82,7 @@ jobs:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
           CYPRESS_BASE_URL: ${{ secrets.DEV_URL }}
+          IMAP_PROXY_URL: http://localhost:3100
         run: |
           SPEC_ARG=""
           if [ -n "${{ inputs.spec }}" ]; then
@@ -69,7 +90,7 @@ jobs:
           fi
 
           npm run e2e:portal:${{ inputs.environment || 'dev' }} -- --headless $SPEC_ARG 2>&1 | \
-            grep --line-buffered -v "CertVerifyProcBuiltin\|ERROR: No matching issuer\|Certificate i=\|OU=Cypress Proxy Server Certificate"
+            grep --line-buffered -v -E "CertVerifyProcBuiltin|ERROR: No matching issuer|Certificate i=|OU=Cypress Proxy Server Certificate|cert_verify_proc"
 
           exit ${PIPESTATUS[0]}
 
