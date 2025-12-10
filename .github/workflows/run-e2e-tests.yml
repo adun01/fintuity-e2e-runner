@@ -104,14 +104,14 @@ jobs:
             exit 1
           fi
 
-          # Очищаем ANSI-коды из лога
-          sed 's/\x1b\[[0-9;]*m//g' cypress-output.log > cypress-clean.log
+          # Очищаем ANSI-коды (работает в Ubuntu)
+          cat cypress-output.log | sed -r "s/\x1B\[([0-9]{1,3}(;[0-9]{1,2})?)?[mGKHf]//g" > cypress-clean.log
 
           # Полная таблица (для файла)
           FULL_SUMMARY=$(grep -A 1000 "(Run Finished)" cypress-clean.log | tail -n +2)
           echo "$FULL_SUMMARY" > summary-full.txt
 
-          # Краткая версия (только итоговая строка)
+          # Краткая версия
           SUMMARY_SHORT=$(echo "$FULL_SUMMARY" | grep "All specs passed\|of.*failed" | tail -1)
           echo "$SUMMARY_SHORT" > summary-short.txt
 
@@ -119,13 +119,16 @@ jobs:
           TOTAL_SPECS=$(echo "$FULL_SUMMARY" | grep -c "│ ✔\|│ ✘" || echo "0")
           echo "$TOTAL_SPECS" > total-specs.txt
 
-          # Извлекаем детали ошибки (если есть)
+          # Извлекаем детали ошибки (head -n -1 работает в Ubuntu)
           if grep -q "1 failing" cypress-clean.log; then
             ERROR_DETAILS=$(grep -A 1000 "1 failing" cypress-clean.log | grep -B 1000 "\[fail-fast\]" | head -n -1)
             echo "$ERROR_DETAILS" > error-details.txt
           else
             echo "" > error-details.txt
           fi
+
+          # Заменяем оригинальный файл очищенной версией
+          cp cypress-clean.log cypress-output.log
 
       - name: Send test results to Telegram
         if: always()
