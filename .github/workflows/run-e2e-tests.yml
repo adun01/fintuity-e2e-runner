@@ -104,8 +104,11 @@ jobs:
             exit 1
           fi
 
+          # Очищаем ANSI-коды из лога
+          sed 's/\x1b\[[0-9;]*m//g' cypress-output.log > cypress-clean.log
+
           # Полная таблица (для файла)
-          FULL_SUMMARY=$(grep -A 1000 "(Run Finished)" cypress-output.log | tail -n +2)
+          FULL_SUMMARY=$(grep -A 1000 "(Run Finished)" cypress-clean.log | tail -n +2)
           echo "$FULL_SUMMARY" > summary-full.txt
 
           # Краткая версия (только итоговая строка)
@@ -115,6 +118,14 @@ jobs:
           # Считаем спеки
           TOTAL_SPECS=$(echo "$FULL_SUMMARY" | grep -c "│ ✔\|│ ✘" || echo "0")
           echo "$TOTAL_SPECS" > total-specs.txt
+
+          # Извлекаем детали ошибки (если есть)
+          if grep -q "1 failing" cypress-clean.log; then
+            ERROR_DETAILS=$(grep -A 1000 "1 failing" cypress-clean.log | grep -B 1000 "\[fail-fast\]" | head -n -1)
+            echo "$ERROR_DETAILS" > error-details.txt
+          else
+            echo "" > error-details.txt
+          fi
 
       - name: Send test results to Telegram
         if: always()
@@ -126,28 +137,18 @@ jobs:
           if grep -q "All specs passed!" cypress-output.log; then
             STATUS="✅ PASSED"
             HEADER="<b>E2E тесты завершены успешно!</b>"
+            MESSAGE="$STATUS $HEADER%0A%0AОкружение: <code>${{ inputs.environment || 'dev' }}</code>%0A%0A📊 <b>Результаты:</b>%0A<pre>$SUMMARY_SHORT</pre>%0A%0AВсего спецификаций: <b>$TOTAL_SPECS</b>%0A%0A📄 Полная таблица в файле ниже ⬇️"
           else
             STATUS="❌ FAILED"
             HEADER="<b>E2E тесты упали!</b>"
+            ERROR_DETAILS=$(cat error-details.txt | head -c 3000)  # Ограничиваем длину для Telegram
+            MESSAGE="$STATUS $HEADER%0A%0AОкружение: <code>${{ inputs.environment || 'dev' }}</code>%0A%0A📊 <b>Результаты:</b>%0A<pre>$SUMMARY_SHORT</pre>%0A%0AВсего спецификаций: <b>$TOTAL_SPECS</b>%0A%0A❗️ <b>Детали ошибки:</b>%0A<pre>$ERROR_DETAILS</pre>%0A%0A📄 Полная таблица в файле ниже ⬇️"
           fi
-
-          MESSAGE="$STATUS $HEADER%0A%0AОкружение: <code>${{ inputs.environment || 'dev' }}</code>%0A%0A📊 <b>Результаты:</b>%0A<pre>$SUMMARY_SHORT</pre>%0A%0AВсего спецификаций: <b>$TOTAL_SPECS</b>%0A%0A📄 Полная таблица в файле ниже ⬇️"
 
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
             -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
             -d "text=$MESSAGE" \
             -d "parse_mode=HTML"
-
-      - name: Send full table to Telegram
-        if: always()
-        working-directory: project
-        run: |
-          if [ -f "summary-full.txt" ]; then
-            curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
-              -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-              -F "document=@summary-full.txt" \
-              -F "caption=📊 Полная таблица результатов"
-          fi
 
       - name: Send full Cypress log to Telegram
         if: always()
