@@ -202,43 +202,77 @@ jobs:
               sleep 1
             done
 
-      - name: Send videos to Telegram
-        if: steps.tests.outcome == 'failure'
+      - name: Send videos for failed tests
+        if: always()
+        working-directory: project
         run: |
-          # Получаем список spec файлов из скриншотов
-          FAILED_SPECS=$(find project/screenshots -type f -name "*failed*.png" | \
+          # Получаем уникальные spec файлы из скриншотов
+          FAILED_SPECS=$(find screenshots -type f -name "*failed*.png" | \
             grep -v "before each hook" | \
             grep -v "after each hook" | \
-            sed 's|project/screenshots/||' | \
-            xargs -I {} dirname {} | \
+            sed 's|screenshots/||' | \
+            cut -d'/' -f1 | \
             sort -u)
 
-          echo "📋 Failed specs:"
+          echo "📋 Failed spec files detected:"
           echo "$FAILED_SPECS"
 
-          # Для каждого spec ищем видео
-          echo "$FAILED_SPECS" | while IFS= read -r spec_path; do
-            # spec_path = "booking/initialization-service/goal-id.cy.ts"
+          if [ -z "$FAILED_SPECS" ]; then
+            echo "No failed specs found"
+            exit 0
+          fi
 
-            VIDEO="project/videos/${spec_path}.mp4"
+          # Для каждого spec ищем соответствующее видео
+          echo "$FAILED_SPECS" | while read -r spec_file; do
+            echo "🔍 Looking for video: videos/${spec_file}.mp4"
 
-            if [ -f "$VIDEO" ]; then
-              VIDEO_SIZE=$(stat -c%s "$VIDEO" 2>/dev/null || stat -f%z "$VIDEO" 2>/dev/null)
+            # Ищем видео файл
+            VIDEO_FILE=$(find videos -type f -name "${spec_file}.mp4" 2>/dev/null | head -n 1)
 
-              if [ "$VIDEO_SIZE" -lt 52428800 ]; then
-                FILENAME=$(basename "$VIDEO" .mp4)
-                echo "🎥 Sending: $FILENAME ($(($VIDEO_SIZE / 1048576))MB)"
-
-                curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendVideo" \
-                  -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-                  -F "video=@\"$VIDEO\"" \
-                  -F "caption=🎥 Failed: $FILENAME"
-
-                sleep 2
-              fi
-            else
-              echo "⚠️ No video found: $VIDEO"
+            if [ -z "$VIDEO_FILE" ]; then
+              echo "⚠️ No video found for: ${spec_file}"
+              continue
             fi
+
+            if [ ! -f "$VIDEO_FILE" ]; then
+              echo "⚠️ Video file not found: $VIDEO_FILE"
+              continue
+            fi
+
+            VIDEO_SIZE=$(stat -c%s "$VIDEO_FILE" 2>/dev/null || stat -f%z "$VIDEO_FILE" 2>/dev/null || echo 0)
+            VIDEO_SIZE_MB=$((VIDEO_SIZE / 1048576))
+
+            echo "📹 Found video: $VIDEO_FILE (${VIDEO_SIZE_MB}MB)"
+
+            if [ "$VIDEO_SIZE" -eq 0 ]; then
+              echo "⚠️ Video file is empty: $VIDEO_FILE"
+              continue
+            fi
+
+            if [ "$VIDEO_SIZE" -ge 52428800 ]; then
+              echo "⚠️ Video too large (${VIDEO_SIZE_MB}MB > 50MB): $VIDEO_FILE"
+              continue
+            fi
+
+            FILENAME=$(basename "$VIDEO_FILE")
+            echo "📤 Sending: $FILENAME (${VIDEO_SIZE_MB}MB)"
+
+            RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+              "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendVideo" \
+              -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+              -F "video=@$VIDEO_FILE" \
+              -F "caption=🎥 Failed Test Video: $FILENAME")
+
+            HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+
+            if [ "$HTTP_CODE" -eq 200 ]; then
+              echo "✅ Video sent successfully"
+            else
+              echo "❌ Failed to send video. HTTP code: $HTTP_CODE"
+              echo "Response: $(echo "$RESPONSE" | head -n-1)"
+            fi
+
+            sleep 2
           done
 
       - name: Send request logs to Telegram
