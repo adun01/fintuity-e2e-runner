@@ -90,9 +90,74 @@ jobs:
           fi
 
           npm run e2e:portal:${{ inputs.environment || 'dev' }} -- --headless $SPEC_ARG 2>&1 | \
-            grep --line-buffered -v -E "CertVerifyProcBuiltin|ERROR: No matching issuer|Certificate i=|OU=Cypress Proxy Server Certificate|cert_verify_proc"
+            grep --line-buffered -v -E "CertVerifyProcBuiltin|ERROR: No matching issuer|Certificate i=|OU=Cypress Proxy Server Certificate|cert_verify_proc" | \
+            tee cypress-output.log
 
           exit ${PIPESTATUS[0]}
+
+      - name: Parse test results
+        if: always()
+        working-directory: project
+        run: |
+          if [ ! -f "cypress-output.log" ]; then
+            echo "ERROR: cypress-output.log not found!"
+            exit 1
+          fi
+
+          # Полная таблица (для файла)
+          FULL_SUMMARY=$(grep -A 1000 "(Run Finished)" cypress-output.log | tail -n +2)
+          echo "$FULL_SUMMARY" > summary-full.txt
+
+          # Краткая версия (только итоговая строка)
+          SUMMARY_SHORT=$(echo "$FULL_SUMMARY" | grep "All specs passed\|of.*failed" | tail -1)
+          echo "$SUMMARY_SHORT" > summary-short.txt
+
+          # Считаем спеки
+          TOTAL_SPECS=$(echo "$FULL_SUMMARY" | grep -c "│ ✔\|│ ✘" || echo "0")
+          echo "$TOTAL_SPECS" > total-specs.txt
+
+      - name: Send test results to Telegram
+        if: always()
+        working-directory: project
+        run: |
+          SUMMARY_SHORT=$(cat summary-short.txt)
+          TOTAL_SPECS=$(cat total-specs.txt)
+
+          if grep -q "All specs passed!" cypress-output.log; then
+            STATUS="✅ PASSED"
+            HEADER="<b>E2E тесты завершены успешно!</b>"
+          else
+            STATUS="❌ FAILED"
+            HEADER="<b>E2E тесты упали!</b>"
+          fi
+
+          MESSAGE="$STATUS $HEADER%0A%0AОкружение: <code>${{ inputs.environment || 'dev' }}</code>%0A%0A📊 <b>Результаты:</b>%0A<pre>$SUMMARY_SHORT</pre>%0A%0AВсего спецификаций: <b>$TOTAL_SPECS</b>%0A%0A📄 Полная таблица в файле ниже ⬇️"
+
+          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+            -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d "text=$MESSAGE" \
+            -d "parse_mode=HTML"
+
+      - name: Send full table to Telegram
+        if: always()
+        working-directory: project
+        run: |
+          if [ -f "summary-full.txt" ]; then
+            curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
+              -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+              -F "document=@summary-full.txt" \
+              -F "caption=📊 Полная таблица результатов"
+          fi
+
+      - name: Send full Cypress log to Telegram
+        if: always()
+        working-directory: project
+        run: |
+          
+          curl -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
+            -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -F "document=@cypress-output.log" \
+            -F "caption=📊 Full Cypress log"
 
       - name: Upload screenshots
         if: steps.tests.outcome == 'failure'
@@ -111,51 +176,6 @@ jobs:
           path: project/videos/
           if-no-files-found: ignore
           retention-days: 7
-
-      - name: Upload requests logs
-        if: steps.tests.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: requests-logs-${{ inputs.environment }}-${{ github.run_number }}
-          path: project/requests-logs/
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Upload memory logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: memory-logs-${{ inputs.environment }}-${{ github.run_number }}
-          path: project/portal-e2e/cypress/results/
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Send Telegram notification - Tests passed
-        if: steps.tests.outcome == 'success'
-        run: |
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-            -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-            -d "text=✅ <b>Тесты прошли успешно!</b>%0AОкружение: <code>${{ inputs.environment || 'dev' }}</code>%0A%0A📊 Отправляем Cypress логи" \
-            -d "parse_mode=HTML"
-
-      - name: Send Telegram notification - Tests failed
-        if: steps.tests.outcome == 'failure'
-        run: |
-          # Берём первый скриншот и извлекаем название теста
-          FIRST_SCREENSHOT=$(find project/screenshots -type f -name "*failed*.png" 2>/dev/null | head -1)
-
-          if [ -z "$FIRST_SCREENSHOT" ]; then
-            TEST_NAME="Неизвестный тест"
-          else
-            TEST_NAME=$(basename "$FIRST_SCREENSHOT" | sed 's/ -- .*//' | sed 's/ (failed)\.png$//')
-          fi
-
-          MESSAGE="❌ <b>Тест упал!</b>%0AОкружение: <code>${{ inputs.environment || 'dev' }}</code>%0A%0A<b>Тест:</b> <code>$TEST_NAME</code>%0A%0A📸 Скриншоты%0A🎥 Видео%0A📋 Логи%0A📊 Cypress логи"
-
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-            -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-            -d "text=$MESSAGE" \
-            -d "parse_mode=HTML"
 
       - name: Send screenshots to Telegram
         if: steps.tests.outcome == 'failure'
@@ -179,6 +199,7 @@ jobs:
             done
 
       - name: Send videos to Telegram
+        if: steps.tests.outcome == 'failure'
         run: |
           # Получаем список spec файлов из скриншотов
           FAILED_SPECS=$(find project/screenshots -type f -name "*failed*.png" | \
@@ -233,41 +254,6 @@ jobs:
 
             sleep 1
           done
-
-      - name: Send Cypress logs to Telegram
-        if: always()
-        run: |
-          echo "📄 Sending Cypress logs..."
-
-          if [ -d "project/portal-e2e/cypress/results" ]; then
-            find project/portal-e2e/cypress/results -type f \( -name "*.json" -o -name "*.log" -o -name "*.txt" \) 2>/dev/null | while IFS= read -r logfile; do
-              FILENAME=$(basename "$logfile")
-
-              echo "📊 Sending: $FILENAME"
-
-              curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
-                -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-                -F "document=@\"$logfile\"" \
-                -F "caption=📊 Cypress log: $FILENAME" || echo "⚠️ Failed to send"
-
-              sleep 1
-            done
-          fi
-
-          if [ -d "project/portal-e2e/cypress/logs" ]; then
-            find project/portal-e2e/cypress/logs -type f 2>/dev/null | while IFS= read -r logfile; do
-              FILENAME=$(basename "$logfile")
-
-              echo "📝 Sending: $FILENAME"
-
-              curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
-                -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-                -F "document=@\"$logfile\"" \
-                -F "caption=📝 Log: $FILENAME" || echo "⚠️ Failed to send"
-
-              sleep 1
-            done
-          fi
 
       - name: Fail workflow if tests failed
         if: steps.tests.outcome == 'failure'
