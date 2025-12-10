@@ -179,27 +179,42 @@ jobs:
             done
 
       - name: Send videos to Telegram
-        if: steps.tests.outcome == 'failure'
         run: |
-          echo "🎥 Sending videos (only failed tests remain)..."
+          # Получаем список spec файлов из скриншотов
+          FAILED_SPECS=$(find project/screenshots -type f -name "*failed*.png" | \
+            grep -v "before each hook" | \
+            grep -v "after each hook" | \
+            sed 's|project/screenshots/||' | \
+            xargs -I {} dirname {} | \
+            sort -u)
 
-          find project/videos -type f -name "*.mp4" 2>/dev/null | \
-            head -5 | \
-            while IFS= read -r video; do
-              VIDEO_SIZE=$(stat -c%s "$video" 2>/dev/null || stat -f%z "$video" 2>/dev/null)
-              FILENAME=$(basename "$video" .mp4)
+          echo "📋 Failed specs:"
+          echo "$FAILED_SPECS"
+
+          # Для каждого spec ищем видео
+          echo "$FAILED_SPECS" | while IFS= read -r spec_path; do
+            # spec_path = "booking/initialization-service/goal-id.cy.ts"
+
+            VIDEO="project/videos/${spec_path}.mp4"
+
+            if [ -f "$VIDEO" ]; then
+              VIDEO_SIZE=$(stat -c%s "$VIDEO" 2>/dev/null || stat -f%z "$VIDEO" 2>/dev/null)
 
               if [ "$VIDEO_SIZE" -lt 52428800 ]; then
+                FILENAME=$(basename "$VIDEO" .mp4)
                 echo "🎥 Sending: $FILENAME ($(($VIDEO_SIZE / 1048576))MB)"
 
                 curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendVideo" \
                   -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-                  -F "video=@\"$video\"" \
-                  -F "caption=🎥 Failed: $FILENAME" || echo "⚠️ Failed to send"
+                  -F "video=@\"$VIDEO\"" \
+                  -F "caption=🎥 Failed: $FILENAME"
 
                 sleep 2
               fi
-            done
+            else
+              echo "⚠️ No video found: $VIDEO"
+            fi
+          done
 
       - name: Send request logs to Telegram
         if: steps.tests.outcome == 'failure'
