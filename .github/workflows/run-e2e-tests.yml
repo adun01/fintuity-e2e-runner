@@ -163,21 +163,18 @@ jobs:
             -F "document=@cypress-output.log" \
             -F "caption=📊 Full Cypress log"
 
-      - name: Upload screenshots
+      - name: Upload test artifacts
         if: steps.tests.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
-          name: screenshots-${{ inputs.environment }}-${{ github.run_number }}
-          path: project/screenshots/
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Upload videos
-        if: steps.tests.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: videos-${{ inputs.environment }}-${{ github.run_number }}
-          path: project/videos/
+          name: test-results-${{ inputs.environment }}-${{ github.run_number }}
+          path: |
+            project/videos/
+            project/screenshots/
+            project/requests-logs/
+            project/cypress-output.log
+            project/summary-full.txt
+            project/error-details.txt
           if-no-files-found: ignore
           retention-days: 7
 
