@@ -163,6 +163,25 @@ jobs:
             -F "document=@cypress-output.log" \
             -F "caption=📊 Full Cypress log"
 
+      - name: Debug - Check request logs
+        if: always()
+        working-directory: project
+        run: |
+          echo "📂 Looking for requests-logs directory..."
+          find . -name "requests-logs" -type d 2>/dev/null || echo "Directory not found"
+          
+          echo ""
+          echo "📋 Looking for JSON files..."
+          find . -name "*.json" -path "*/requests-logs/*" 2>/dev/null || echo "No JSON files found"
+          
+          echo ""
+          echo "📊 Directory tree:"
+          ls -la requests-logs/ 2>/dev/null || echo "requests-logs doesn't exist"
+          
+          echo ""
+          echo "🔍 All JSON files in project:"
+          find . -name "*.json" -type f | grep -v node_modules | head -20
+
       - name: Upload test artifacts
         if: steps.tests.outcome == 'failure'
         uses: actions/upload-artifact@v4
@@ -171,7 +190,7 @@ jobs:
           path: |
             project/videos/
             project/screenshots/
-            project/requests-logs/
+            project/portal-e2e/requests-logs/
             project/cypress-output.log
             project/summary-full.txt
             project/error-details.txt
