@@ -21,12 +21,29 @@ jobs:
   e2e-tests:
     runs-on: ubuntu-latest
 
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: booking-pages
+            spec_pattern: "portal-e2e/src/integration/groups/booking-pages-and-shared/*.cy.ts"
+            year_offset: 0
+          - group: booking-initialization
+            spec_pattern: "portal-e2e/src/integration/groups/booking-initialization-service/*.cy.ts"
+            year_offset: 1
+          - group: registration
+            spec_pattern: "portal-e2e/src/integration/groups/registration/*.cy.ts"
+            year_offset: 2
+          - group: login
+            spec_pattern: "portal-e2e/src/integration/groups/login/*.cy.ts"
+            year_offset: 3
+
     steps:
       - name: Send Telegram notification - Tests started
         run: |
           curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
             -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-            -d "text=🚀 <b>E2E тесты запущены</b>%0AОкружение: <code>${{ inputs.environment || 'dev' }}</code>%0AURL: <code>${{ secrets.DEV_URL }}</code>" \
+            -d "text=🚀 <b>E2E тесты запущены</b>%0AГруппа: <code>${{ matrix.group }}</code>%0AОкружение: <code>${{ inputs.environment || 'dev' }}</code>%0AURL: <code>${{ secrets.DEV_URL }}</code>" \
             -d "parse_mode=HTML"
 
       - name: Clone repository from Bitbucket
@@ -87,13 +104,24 @@ jobs:
           SPEC_ARG=""
           if [ -n "${{ inputs.spec }}" ]; then
             SPEC_ARG="--spec ${{ inputs.spec }}"
+          else
+            SPEC_ARG="--spec ${{ matrix.spec_pattern }}"
           fi
 
-          npm run e2e:portal:${{ inputs.environment || 'dev' }} -- --headless $SPEC_ARG 2>&1 | \
+          npm run e2e:portal:${{ inputs.environment || 'dev' }} -- --headless $SPEC_ARG --env yearOffset=${{ matrix.year_offset }} 2>&1 | \
             grep --line-buffered -v -E "CertVerifyProcBuiltin|ERROR: No matching issuer|Certificate i=|OU=Cypress Proxy Server Certificate|cert_verify_proc" | \
             tee cypress-output.log
 
           exit ${PIPESTATUS[0]}
+
+      - name: Stop IMAP Proxy Server
+        if: always()
+        run: |
+          if [ -n "${{ env.PROXY_PID }}" ]; then
+            echo "🛑 Stopping proxy server..."
+            curl -s -X POST http://localhost:3100/close || true
+            kill ${{ env.PROXY_PID }} || true
+          fi
 
       - name: Parse test results
         if: always()
@@ -139,11 +167,11 @@ jobs:
 
           if grep -q "All specs passed!" cypress-output.log; then
             STATUS="✅ PASSED"
-            HEADER="<b>E2E тесты завершены успешно!</b>"
+            HEADER="<b>Группа '${{ matrix.group }}' прошла!</b>"
             MESSAGE="$STATUS $HEADER%0A%0AОкружение: <code>${{ inputs.environment || 'dev' }}</code>%0A%0A📊 <b>Результаты:</b>%0A<pre>$SUMMARY_SHORT</pre>%0A%0AВсего спецификаций: <b>$TOTAL_SPECS</b>%0A%0A📄 Полная таблица в файле ниже ⬇️"
           else
             STATUS="❌ FAILED"
-            HEADER="<b>E2E тесты упали!</b>"
+            HEADER="<b>Группа '${{ matrix.group }}' упала!</b>"
             ERROR_DETAILS=$(cat error-details.txt | head -c 3000)  # Ограничиваем длину для Telegram
             MESSAGE="$STATUS $HEADER%0A%0AОкружение: <code>${{ inputs.environment || 'dev' }}</code>%0A%0A📊 <b>Результаты:</b>%0A<pre>$SUMMARY_SHORT</pre>%0A%0AВсего спецификаций: <b>$TOTAL_SPECS</b>%0A%0A❗️ <b>Детали ошибки:</b>%0A<pre>$ERROR_DETAILS</pre>%0A%0A📄 Полная таблица в файле ниже ⬇️"
           fi
@@ -161,7 +189,7 @@ jobs:
           curl -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
             -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
             -F "document=@cypress-output.log" \
-            -F "caption=📊 Full Cypress log"
+            -F "caption=📊 [${{ matrix.group }}] Full Cypress log"
 
       - name: Debug - Check request logs
         if: always()
@@ -186,7 +214,7 @@ jobs:
         if: steps.tests.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-${{ inputs.environment }}-${{ github.run_number }}
+          name: test-results-${{ matrix.group }}-${{ inputs.environment }}-${{ github.run_number }}
           path: |
             project/videos/
             project/screenshots/
@@ -213,7 +241,7 @@ jobs:
               curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendPhoto" \
                 -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
                 -F "photo=@\"$screenshot\"" \
-                -F "caption=📸 $TEST_NAME" || echo "⚠️ Failed to send"
+                -F "caption=📸 [${{ matrix.group }}] $TEST_NAME" || echo "⚠️ Failed to send"
 
               sleep 1
             done
@@ -227,7 +255,7 @@ jobs:
             grep -v "before each hook" | \
             grep -v "after each hook" | \
             sed 's|screenshots/||' | \
-            cut -d'/' -f1 | \
+            xargs -I {} dirname {} | \
             sort -u)
 
           echo "📋 Failed spec files detected:"
@@ -239,16 +267,11 @@ jobs:
           fi
 
           # Для каждого spec ищем соответствующее видео
-          echo "$FAILED_SPECS" | while read -r spec_file; do
-            echo "🔍 Looking for video: videos/${spec_file}.mp4"
+          echo "$FAILED_SPECS" | while read -r spec_path; do
+            echo "🔍 Looking for video: videos/${spec_path}.mp4"
 
             # Ищем видео файл
-            VIDEO_FILE=$(find videos -type f -name "${spec_file}.mp4" 2>/dev/null | head -n 1)
-
-            if [ -z "$VIDEO_FILE" ]; then
-              echo "⚠️ No video found for: ${spec_file}"
-              continue
-            fi
+            VIDEO_FILE="videos/${spec_path}.mp4"
 
             if [ ! -f "$VIDEO_FILE" ]; then
               echo "⚠️ Video file not found: $VIDEO_FILE"
@@ -277,7 +300,7 @@ jobs:
               "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendVideo" \
               -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
               -F "video=@$VIDEO_FILE" \
-              -F "caption=🎥 Failed Test Video: $FILENAME")
+              -F "caption=🎥 [${{ matrix.group }}] Failed Test Video: $FILENAME")
 
             HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
 
@@ -304,7 +327,7 @@ jobs:
             curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
               -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
               -F "document=@\"$logfile\"" \
-              -F "caption=📋 Request log: $FILENAME" || echo "⚠️ Failed to send log"
+              -F "caption=📋 [${{ matrix.group }}] Request log: $FILENAME" || echo "⚠️ Failed to send log"
 
             sleep 1
           done
