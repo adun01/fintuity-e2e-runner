@@ -118,62 +118,62 @@ jobs:
             tee cypress-output.log
 
           exit ${PIPESTATUS[0]}
-      - name: MEGA DEBUG - Find requests-logs everywhere
-        if: always()
-        run: |
-          echo "=========================================="
-          echo "🔍 SEARCHING FOR requests-logs EVERYWHERE"
-          echo "=========================================="
-          
-          echo ""
-          echo "📂 Current directory:"
-          pwd
-          
-          echo ""
-          echo "📂 Directory structure:"
-          ls -la
-          
-          echo ""
-          echo "🔍 Find ALL requests-logs directories:"
-          find / -name "requests-logs" -type d 2>/dev/null || echo "Not found in root"
-          
-          echo ""
-          echo "🔍 Find in /home/runner:"
-          find /home/runner -name "requests-logs" -type d 2>/dev/null || echo "Not found in /home/runner"
-          
-          echo ""
-          echo "🔍 Find in current workspace:"
-          find . -name "requests-logs" -type d 2>/dev/null || echo "Not found in workspace"
-          
-          echo ""
-          echo "📋 Find ALL .json files with 'request' in path:"
-          find . -type f -name "*.json" -path "*request*" 2>/dev/null || echo "No request JSONs found"
-          
-          echo ""
-          echo "📂 Project directory contents:"
-          ls -la project/ || echo "project/ not found"
-          
-          echo ""
-          echo "📂 portal-e2e directory contents:"
-          ls -la project/portal-e2e/ || echo "portal-e2e/ not found"
-          
-          echo ""
-          echo "🔍 Cypress output log content (last 50 lines):"
-          tail -50 project/cypress-output.log 2>/dev/null || echo "cypress-output.log not found"
-          
-          echo ""
-          echo "🔍 Search for 'saveAllRequests' in logs:"
-          grep -i "saveAllRequests" project/cypress-output.log 2>/dev/null || echo "No saveAllRequests mentions"
-          
-          echo ""
-          echo "🔍 Search for 'afterEach called' in logs:"
-          grep -i "afterEach called" project/cypress-output.log 2>/dev/null || echo "No afterEach mentions"
-          
-          echo ""
-          echo "🔍 Search for 'Test failed' in logs:"
-          grep -i "Test failed" project/cypress-output.log 2>/dev/null || echo "No 'Test failed' mentions"
-          
-          echo "=========================================="
+#      - name: MEGA DEBUG - Find requests-logs everywhere
+#        if: always()
+#        run: |
+#          echo "=========================================="
+#          echo "🔍 SEARCHING FOR requests-logs EVERYWHERE"
+#          echo "=========================================="
+#
+#          echo ""
+#          echo "📂 Current directory:"
+#          pwd
+#
+#          echo ""
+#          echo "📂 Directory structure:"
+#          ls -la
+#
+#          echo ""
+#          echo "🔍 Find ALL requests-logs directories:"
+#          find / -name "requests-logs" -type d 2>/dev/null || echo "Not found in root"
+#
+#          echo ""
+#          echo "🔍 Find in /home/runner:"
+#          find /home/runner -name "requests-logs" -type d 2>/dev/null || echo "Not found in /home/runner"
+#
+#          echo ""
+#          echo "🔍 Find in current workspace:"
+#          find . -name "requests-logs" -type d 2>/dev/null || echo "Not found in workspace"
+#
+#          echo ""
+#          echo "📋 Find ALL .json files with 'request' in path:"
+#          find . -type f -name "*.json" -path "*request*" 2>/dev/null || echo "No request JSONs found"
+#
+#          echo ""
+#          echo "📂 Project directory contents:"
+#          ls -la project/ || echo "project/ not found"
+#
+#          echo ""
+#          echo "📂 portal-e2e directory contents:"
+#          ls -la project/portal-e2e/ || echo "portal-e2e/ not found"
+#
+#          echo ""
+#          echo "🔍 Cypress output log content (last 50 lines):"
+#          tail -50 project/cypress-output.log 2>/dev/null || echo "cypress-output.log not found"
+#
+#          echo ""
+#          echo "🔍 Search for 'saveAllRequests' in logs:"
+#          grep -i "saveAllRequests" project/cypress-output.log 2>/dev/null || echo "No saveAllRequests mentions"
+#
+#          echo ""
+#          echo "🔍 Search for 'afterEach called' in logs:"
+#          grep -i "afterEach called" project/cypress-output.log 2>/dev/null || echo "No afterEach mentions"
+#
+#          echo ""
+#          echo "🔍 Search for 'Test failed' in logs:"
+#          grep -i "Test failed" project/cypress-output.log 2>/dev/null || echo "No 'Test failed' mentions"
+#
+#          echo "=========================================="
       - name: Stop IMAP Proxy Server
         if: always()
         run: |
@@ -250,24 +250,24 @@ jobs:
             -F "document=@cypress-output.log" \
             -F "caption=📊 [${{ matrix.group }}] Full Cypress log"
 
-      - name: Debug - Check request logs
-        if: always()
-        working-directory: project
-        run: |
-          echo "📂 Looking for requests-logs directory..."
-          find . -name "requests-logs" -type d 2>/dev/null || echo "Directory not found"
-          
-          echo ""
-          echo "📋 Looking for JSON files..."
-          find . -name "*.json" -path "*/requests-logs/*" 2>/dev/null || echo "No JSON files found"
-          
-          echo ""
-          echo "📊 Directory tree:"
-          ls -la portal-e2e/requests-logs/ 2>/dev/null || echo "requests-logs doesn't exist"
-          
-          echo ""
-          echo "🔍 All JSON files in project:"
-          find . -name "*.json" -type f | grep -v node_modules | head -20
+#      - name: Debug - Check request logs
+#        if: always()
+#        working-directory: project
+#        run: |
+#          echo "📂 Looking for requests-logs directory..."
+#          find . -name "requests-logs" -type d 2>/dev/null || echo "Directory not found"
+#
+#          echo ""
+#          echo "📋 Looking for JSON files..."
+#          find . -name "*.json" -path "*/requests-logs/*" 2>/dev/null || echo "No JSON files found"
+#
+#          echo ""
+#          echo "📊 Directory tree:"
+#          ls -la portal-e2e/requests-logs/ 2>/dev/null || echo "requests-logs doesn't exist"
+#
+#          echo ""
+#          echo "🔍 All JSON files in project:"
+#          find . -name "*.json" -type f | grep -v node_modules | head -20
 
       - name: Upload test artifacts
         if: steps.tests.outcome == 'failure'
