@@ -113,7 +113,7 @@ jobs:
             tee cypress-output.log
 
           exit ${PIPESTATUS[0]}
-      name: MEGA DEBUG - Find requests-logs everywhere
+      - name: MEGA DEBUG - Find requests-logs everywhere
         if: always()
         run: |
           echo "=========================================="
