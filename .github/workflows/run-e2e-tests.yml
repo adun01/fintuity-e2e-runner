@@ -259,7 +259,7 @@ jobs:
           
           echo ""
           echo "📊 Directory tree:"
-          ls -la requests-logs/ 2>/dev/null || echo "requests-logs doesn't exist"
+          ls -la portal-e2e/requests-logs/ 2>/dev/null || echo "requests-logs doesn't exist"
           
           echo ""
           echo "🔍 All JSON files in project:"
@@ -374,7 +374,7 @@ jobs:
         run: |
           echo "📋 Sending request logs..."
 
-          find project/requests-logs -type f -name "*.json" 2>/dev/null | while IFS= read -r logfile; do
+          find project/portal-e2e/requests-logs -type f -name "*.json" 2>/dev/null | while IFS= read -r logfile; do
             FILENAME=$(basename "$logfile")
 
             echo "📄 Sending log: $FILENAME"
