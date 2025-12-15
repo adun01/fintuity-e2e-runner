@@ -108,7 +108,7 @@ jobs:
             SPEC_ARG="--spec ${{ matrix.spec_pattern }}"
           fi
 
-          npm run e2e:portal:${{ inputs.environment || 'dev' }} -- --headless $SPEC_ARG --env groupName=${{ matrix.group }}, yearOffset=${{ matrix.year_offset }} 2>&1 | \
+          npm run e2e:portal:${{ inputs.environment || 'dev' }} -- --headless $SPEC_ARG --env "groupName=${{ matrix.group }},yearOffset=${{ matrix.year_offset }}" 2>&1 | \
             grep --line-buffered -v -E "CertVerifyProcBuiltin|ERROR: No matching issuer|Certificate i=|OU=Cypress Proxy Server Certificate|cert_verify_proc" | \
             tee cypress-output.log
 
