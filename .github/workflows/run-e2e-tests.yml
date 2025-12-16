@@ -18,27 +18,7 @@ on:
         type: string
 
 jobs:
-  create-topic:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Create Telegram topic for this run
-        id: topic
-        run: |
-          TOPIC_NAME="🚀 Run #${{ github.run_number }} - ${{ inputs.environment || 'dev' }}"
-          
-          RESPONSE=$(curl -s -X POST 'https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/createForumTopic' \
-            -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-            -d "name=$TOPIC_NAME")
-          
-          TOPIC_ID=$(echo "$RESPONSE" | jq -r '.result.message_thread_id')
-          echo "TOPIC_ID=$TOPIC_ID" >> $GITHUB_OUTPUT
-          echo "TOPIC_NAME=$TOPIC_NAME" >> $GITHUB_OUTPUT
-          echo "📋 Created topic: $TOPIC_NAME (ID: $TOPIC_ID)"
-    outputs:
-      topic_id: ${{ steps.topic.outputs.TOPIC_ID }}
-      topic_name: ${{ steps.topic.outputs.TOPIC_NAME }}
   e2e-tests:
-    needs: create-topic
     runs-on: ubuntu-latest
 
     strategy:
@@ -59,19 +39,6 @@ jobs:
             year_offset: 3
 
     steps:
-      - name: Send Telegram notification - Tests started
-        id: telegram_start
-        run: |
-          RESPONSE=$(curl -s -X POST 'https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage' \
-            -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-            -d "message_thread_id=${{ needs.create-topic.outputs.topic_id }}" \
-            -d "text=🚀 <b>Группа запущена</b>%0AГруппа: <code>${{ matrix.group }}</code>%0AОкружение: <code>${{ inputs.environment || 'dev' }}</code>" \
-            -d "parse_mode=HTML")
-          
-          MESSAGE_ID=$(echo "$RESPONSE" | jq -r '.result.message_id')
-          echo "MESSAGE_ID=$MESSAGE_ID" >> $GITHUB_ENV
-          echo "📨 Message ID: $MESSAGE_ID"
-
       - name: Clone repository from Bitbucket
         run: |
           git clone --depth 1 https://${{ secrets.BITBUCKET_USERNAME }}:${{ secrets.BITBUCKET_API_TOKEN }}@bitbucket.org/fintuity-team/e2e-tests.git project
@@ -107,7 +74,6 @@ jobs:
           PROXY_PID=$!
           echo "PROXY_PID=$PROXY_PID" >> $GITHUB_ENV
 
-          # Ждём пока сервер поднимется
           echo "⏳ Waiting for proxy server..."
           for i in {1..10}; do
             if curl -s http://localhost:3100/health > /dev/null; then
@@ -139,62 +105,7 @@ jobs:
             tee cypress-output.log
 
           exit ${PIPESTATUS[0]}
-#      - name: MEGA DEBUG - Find requests-logs everywhere
-#        if: always()
-#        run: |
-#          echo "=========================================="
-#          echo "🔍 SEARCHING FOR requests-logs EVERYWHERE"
-#          echo "=========================================="
-#
-#          echo ""
-#          echo "📂 Current directory:"
-#          pwd
-#
-#          echo ""
-#          echo "📂 Directory structure:"
-#          ls -la
-#
-#          echo ""
-#          echo "🔍 Find ALL requests-logs directories:"
-#          find / -name "requests-logs" -type d 2>/dev/null || echo "Not found in root"
-#
-#          echo ""
-#          echo "🔍 Find in /home/runner:"
-#          find /home/runner -name "requests-logs" -type d 2>/dev/null || echo "Not found in /home/runner"
-#
-#          echo ""
-#          echo "🔍 Find in current workspace:"
-#          find . -name "requests-logs" -type d 2>/dev/null || echo "Not found in workspace"
-#
-#          echo ""
-#          echo "📋 Find ALL .json files with 'request' in path:"
-#          find . -type f -name "*.json" -path "*request*" 2>/dev/null || echo "No request JSONs found"
-#
-#          echo ""
-#          echo "📂 Project directory contents:"
-#          ls -la project/ || echo "project/ not found"
-#
-#          echo ""
-#          echo "📂 portal-e2e directory contents:"
-#          ls -la project/portal-e2e/ || echo "portal-e2e/ not found"
-#
-#          echo ""
-#          echo "🔍 Cypress output log content (last 50 lines):"
-#          tail -50 project/cypress-output.log 2>/dev/null || echo "cypress-output.log not found"
-#
-#          echo ""
-#          echo "🔍 Search for 'saveAllRequests' in logs:"
-#          grep -i "saveAllRequests" project/cypress-output.log 2>/dev/null || echo "No saveAllRequests mentions"
-#
-#          echo ""
-#          echo "🔍 Search for 'afterEach called' in logs:"
-#          grep -i "afterEach called" project/cypress-output.log 2>/dev/null || echo "No afterEach mentions"
-#
-#          echo ""
-#          echo "🔍 Search for 'Test failed' in logs:"
-#          grep -i "Test failed" project/cypress-output.log 2>/dev/null || echo "No 'Test failed' mentions"
-#
-#          echo "=========================================="
+
       - name: Stop IMAP Proxy Server
         if: always()
         run: |
@@ -213,22 +124,17 @@ jobs:
             exit 1
           fi
 
-          # Очищаем ANSI-коды (работает в Ubuntu)
           cat cypress-output.log | sed -r "s/\x1B\[([0-9]{1,3}(;[0-9]{1,2})?)?[mGKHf]//g" > cypress-clean.log
 
-          # Полная таблица (для файла)
           FULL_SUMMARY=$(grep -A 1000 "(Run Finished)" cypress-clean.log | tail -n +2)
           echo "$FULL_SUMMARY" > summary-full.txt
 
-          # Краткая версия
           SUMMARY_SHORT=$(echo "$FULL_SUMMARY" | grep "All specs passed\|of.*failed" | tail -1)
           echo "$SUMMARY_SHORT" > summary-short.txt
 
-          # Считаем спеки
           TOTAL_SPECS=$(echo "$FULL_SUMMARY" | grep -c "│ ✔\|│ ✘" || echo "0")
           echo "$TOTAL_SPECS" > total-specs.txt
 
-          # Извлекаем детали ошибки (head -n -1 работает в Ubuntu)
           if grep -q "1 failing" cypress-clean.log; then
             ERROR_DETAILS=$(grep -A 1000 "1 failing" cypress-clean.log | grep -B 1000 "\[fail-fast\]" | head -n -1)
             echo "$ERROR_DETAILS" > error-details.txt
@@ -236,31 +142,40 @@ jobs:
             echo "" > error-details.txt
           fi
 
-          # Заменяем оригинальный файл очищенной версией
           cp cypress-clean.log cypress-output.log
 
-      - name: Update Telegram message with results
+      - name: Send results to Telegram
         if: always()
         working-directory: project
         run: |
           SUMMARY_SHORT=$(cat summary-short.txt)
           TOTAL_SPECS=$(cat total-specs.txt)
-          
+
           if grep -q "All specs passed!" cypress-output.log; then
             STATUS="✅ PASSED"
-            TEXT="🚀 <b>Группа запущена</b>%0AГруппа: <code>${{ matrix.group }}</code>%0AОкружение: <code>${{ inputs.environment || 'dev' }}</code>%0A%0A$STATUS <b>Прошла!</b>%0A%0A📊 <b>Результаты:</b>%0A<pre>$SUMMARY_SHORT</pre>%0AСпецификаций: <b>$TOTAL_SPECS</b>"
+            TARGET_TOPIC_ID="${{ secrets.TELEGRAM_TOPIC_SUCCESS_ID }}"
+            HEADER="──────── Run #${{ github.run_number }} (${{
+              inputs.environment || 'dev'
+            }}) / group: ${{ matrix.group }} ────────"
+            TEXT="$HEADER%0A%0A🚀 <b>Группа запущена</b>%0AГруппа: <code>${{ matrix.group }}</code>%0AОкружение: <code>${{ inputs.environment || 'dev' }}</code>%0A%0A$STATUS <b>Прошла!</b>%0A%0A📊 <b>Результаты:</b>%0A<pre>$SUMMARY_SHORT</pre>%0AСпецификаций: <b>$TOTAL_SPECS</b>"
           else
             STATUS="❌ FAILED"
+            TARGET_TOPIC_ID="${{ secrets.TELEGRAM_TOPIC_FAILED_ID }}"
+            HEADER="──────── Run #${{ github.run_number }} (${{
+              inputs.environment || 'dev'
+            }}) / group: ${{ matrix.group }} ────────"
             TOTAL_FAILED=$(find screenshots -name "*failed*.png" 2>/dev/null | wc -l || echo "0")
-            TEXT="🚀 <b>Группа запущена</b>%0AГруппа: <code>${{ matrix.group }}</code>%0AОкружение: <code>${{ inputs.environment || 'dev' }}</code>%0A%0A$STATUS <b>Упала!</b>%0A%0A📊 <b>Результаты:</b>%0A<pre>$SUMMARY_SHORT</pre>%0AСпецификаций: <b>$TOTAL_SPECS</b>%0AУпало: <b>$TOTAL_FAILED</b>%0A%0A📸 Файлы ниже ⬇️"
+            TEXT="$HEADER%0A%0A🚀 <b>Группа запущена</b>%0AГруппа: <code>${{ matrix.group }}</code>%0AОкружение: <code>${{ inputs.environment || 'dev' }}</code>%0A%0A$STATUS <b>Упала!</b>%0A%0A📊 <b>Результаты:</b>%0A<pre>$SUMMARY_SHORT</pre>%0AСпецификаций: <b>$TOTAL_SPECS</b>%0AУпало: <b>$TOTAL_FAILED</b>%0A%0A📸 Файлы ниже ⬇️"
           fi
-          
-          curl -s -X POST 'https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/editMessageText' \
+
+          RESPONSE=$(curl -s -X POST 'https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage' \
             -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-            -d "message_thread_id=${{ needs.create-topic.outputs.topic_id }}" \
-            -d "message_id=${{ env.MESSAGE_ID }}" \
+            -d "message_thread_id=$TARGET_TOPIC_ID" \
             -d "text=$TEXT" \
-            -d "parse_mode=HTML"
+            -d "parse_mode=HTML")
+
+          MESSAGE_ID=$(echo "$RESPONSE" | jq -r '.result.message_id')
+          echo "MESSAGE_ID=$MESSAGE_ID" >> $GITHUB_ENV
 
       - name: Send full Cypress log to Telegram
         if: steps.tests.outcome == 'failure'
@@ -268,29 +183,9 @@ jobs:
         run: |
           curl -s -X POST 'https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument' \
             -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-            -F "message_thread_id=${{ needs.create-topic.outputs.topic_id }}" \
-            -F "reply_to_message_id=${{ env.MESSAGE_ID }}" \
+            -F "message_thread_id=${{ secrets.TELEGRAM_TOPIC_FAILED_ID }}" \
             -F "document=@cypress-output.log" \
             -F "caption=📊 [${{ matrix.group }}] Full Cypress log"
-
-#      - name: Debug - Check request logs
-#        if: always()
-#        working-directory: project
-#        run: |
-#          echo "📂 Looking for requests-logs directory..."
-#          find . -name "requests-logs" -type d 2>/dev/null || echo "Directory not found"
-#
-#          echo ""
-#          echo "📋 Looking for JSON files..."
-#          find . -name "*.json" -path "*/requests-logs/*" 2>/dev/null || echo "No JSON files found"
-#
-#          echo ""
-#          echo "📊 Directory tree:"
-#          ls -la portal-e2e/requests-logs/ 2>/dev/null || echo "requests-logs doesn't exist"
-#
-#          echo ""
-#          echo "🔍 All JSON files in project:"
-#          find . -name "*.json" -type f | grep -v node_modules | head -20
 
       - name: Upload test artifacts
         if: steps.tests.outcome == 'failure'
@@ -316,16 +211,15 @@ jobs:
             head -5 | \
             while IFS= read -r screenshot; do
               TEST_NAME=$(basename "$screenshot" .png | sed 's/ -- / - /g' | sed 's/ (failed)//')
-          
+
               echo "📸 Sending: $TEST_NAME"
-          
+
               curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendPhoto" \
                 -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-                -F "message_thread_id=${{ needs.create-topic.outputs.topic_id }}" \
-                -F "reply_to_message_id=${{ env.MESSAGE_ID }}" \
+                -F "message_thread_id=${{ secrets.TELEGRAM_TOPIC_FAILED_ID }}" \
                 -F "photo=@\"$screenshot\"" \
                 -F "caption=📸 [${{ matrix.group }}] $TEST_NAME" || echo "⚠️ Failed to send"
-          
+
               sleep 1
             done
 
@@ -339,38 +233,37 @@ jobs:
             sed 's|screenshots/||' | \
             xargs -I {} dirname {} | \
             sort -u)
-          
+
           echo "📋 Failed spec files detected:"
           echo "$FAILED_SPECS"
-          
+
           if [ -z "$FAILED_SPECS" ]; then
             echo "No failed specs found"
             exit 0
           fi
-          
+
           echo "$FAILED_SPECS" | while read -r spec_path; do
             VIDEO_FILE="videos/${spec_path}.mp4"
-          
+
             if [ ! -f "$VIDEO_FILE" ]; then
               continue
             fi
-          
+
             VIDEO_SIZE=$(stat -c%s "$VIDEO_FILE" 2>/dev/null || stat -f%z "$VIDEO_FILE" 2>/dev/null || echo 0)
-          
+
             if [ "$VIDEO_SIZE" -eq 0 ] || [ "$VIDEO_SIZE" -ge 52428800 ]; then
               continue
             fi
-          
+
             FILENAME=$(basename "$VIDEO_FILE")
             echo "📤 Sending: $FILENAME"
-          
+
             curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendVideo" \
               -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-              -F "message_thread_id=${{ needs.create-topic.outputs.topic_id }}" \
-              -F "reply_to_message_id=${{ env.MESSAGE_ID }}" \
+              -F "message_thread_id=${{ secrets.TELEGRAM_TOPIC_FAILED_ID }}" \
               -F "video=@$VIDEO_FILE" \
               -F "caption=🎥 [${{ matrix.group }}] $FILENAME"
-          
+
             sleep 2
           done
 
@@ -379,32 +272,16 @@ jobs:
         run: |
           find project/portal-e2e/requests-logs -type f -name "*.json" 2>/dev/null | while IFS= read -r logfile; do
             FILENAME=$(basename "$logfile")
-          
+
             curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
               -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-              -F "message_thread_id=${{ needs.create-topic.outputs.topic_id }}" \
-              -F "reply_to_message_id=${{ env.MESSAGE_ID }}" \
+              -F "message_thread_id=${{ secrets.TELEGRAM_TOPIC_FAILED_ID }}" \
               -F "document=@\"$logfile\"" \
               -F "caption=📋 [${{ matrix.group }}] $FILENAME"
-          
+
             sleep 1
           done
 
       - name: Fail workflow if tests failed
         if: steps.tests.outcome == 'failure'
         run: exit 1
-  finalize:
-    needs: [ create-topic, e2e-tests ]
-    runs-on: ubuntu-latest
-    # Запускаем только если хотя бы один matrix job e2e-tests упал
-    if: failure() && needs.create-topic.result == 'success'
-    steps:
-      - name: Update topic title
-        run: |
-          ORIGINAL_NAME="🚀 Run #${{ github.run_number }} - ${{ inputs.environment || 'dev' }}"
-          NEW_NAME="${ORIGINAL_NAME/🚀/❌}"
-          
-          curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/editForumTopic" \
-            -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-            -d "message_thread_id=${{ needs.create-topic.outputs.topic_id }}" \
-            -d "name=$NEW_NAME"
