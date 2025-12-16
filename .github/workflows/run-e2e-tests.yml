@@ -263,7 +263,7 @@ jobs:
             -d "parse_mode=HTML"
 
       - name: Send full Cypress log to Telegram
-        if: always()
+        if: steps.tests.outcome == 'failure'
         working-directory: project
         run: |
           curl -s -X POST 'https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument' \
@@ -330,7 +330,7 @@ jobs:
             done
 
       - name: Send videos for failed tests
-        if: always()
+        if: steps.tests.outcome == 'failure'
         working-directory: project
         run: |
           FAILED_SPECS=$(find screenshots -type f -name "*failed*.png" | \
