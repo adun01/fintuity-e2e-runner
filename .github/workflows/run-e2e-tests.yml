@@ -31,7 +31,7 @@ jobs:
           - group: booking-shared
             spec_pattern: "portal-e2e/src/integration/groups/booking-shared/*.cy.ts"
             year_offset: 1
-          - group: booking-initialization
+          - group: booking-service
             spec_pattern: "portal-e2e/src/integration/groups/booking-service/*.cy.ts"
             year_offset: 2
           - group: auth
