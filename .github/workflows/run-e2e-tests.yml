@@ -75,6 +75,8 @@ jobs:
         env:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
+          BO_USER_EMAIL: ${{ secrets.BO_USER_EMAIL }}
+          BO_USER_PASSWORD: ${{ secrets.BO_USER_PASSWORD }}
         run: |
           npm run imap-proxy &
           PROXY_PID=$!
@@ -96,6 +98,8 @@ jobs:
         env:
           GMAIL_USER: ${{ secrets.GMAIL_USER }}
           GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
+          BO_USER_EMAIL: ${{ secrets.BO_USER_EMAIL }}
+          BO_USER_PASSWORD: ${{ secrets.BO_USER_PASSWORD }}
           CYPRESS_BASE_URL: ${{ secrets.DEV_URL }}
           IMAP_PROXY_URL: http://localhost:3100
         run: |
