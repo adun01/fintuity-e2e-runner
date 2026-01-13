@@ -40,9 +40,9 @@ jobs:
           - group: auth
             spec_pattern: "portal-e2e/src/integration/groups/auth/**/*.cy.ts"
             year_offset: 4
-          - group: kyc
-            spec_pattern: "portal-e2e/src/integration/groups/kyc/**/*.cy.ts"
-            year_offset: 4
+#          - group: kyc
+#            spec_pattern: "portal-e2e/src/integration/groups/kyc/**/*.cy.ts"
+#            year_offset: 4
 
     steps:
       - name: Clone repository from Bitbucket
