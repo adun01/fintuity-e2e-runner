@@ -46,8 +46,24 @@ jobs:
 #          - group: kyc
 #            spec_pattern: "portal-e2e/src/integration/groups/kyc/**/*.cy.ts"
 #            year_offset: 5
-          - group: health-check
+          - group: health-check-sequential
             spec_pattern: "portal-e2e/src/integration/groups/health-check/health-check-sequential.cy.ts"
+            year_offset: 6
+            config_file: "cypress-hc.json"
+          - group: health-check-single-client
+            spec_pattern: "portal-e2e/src/integration/groups/health-check/health-check-single-client.cy.ts"
+            year_offset: 6
+            config_file: "cypress-hc.json"
+          - group: health-check-navigation
+            spec_pattern: "portal-e2e/src/integration/groups/health-check/health-check-navigation.cy.ts"
+            year_offset: 6
+            config_file: "cypress-hc.json"
+          - group: health-check-roundtrip
+            spec_pattern: "portal-e2e/src/integration/groups/health-check/health-check-roundtrip.cy.ts"
+            year_offset: 6
+            config_file: "cypress-hc.json"
+          - group: health-check-fastpass
+            spec_pattern: "portal-e2e/src/integration/groups/health-check/health-check-fastpass.cy.ts"
             year_offset: 6
             config_file: "cypress-hc.json"
 
