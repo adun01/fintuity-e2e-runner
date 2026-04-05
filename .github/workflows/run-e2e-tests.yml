@@ -66,6 +66,26 @@ jobs:
             spec_pattern: "portal-e2e/src/integration/groups/health-check/health-check-fastpass.cy.ts"
             year_offset: 6
             config_file: "cypress-hc.json"
+          - group: health-check-route-guards
+            spec_pattern: "portal-e2e/src/integration/groups/health-check/health-check-route-guards.cy.ts"
+            year_offset: 6
+            config_file: "cypress-hc.json"
+          - group: health-check-toc
+            spec_pattern: "portal-e2e/src/integration/groups/health-check/health-check-toc.cy.ts"
+            year_offset: 6
+            config_file: "cypress-hc.json"
+          - group: health-check-too-hard
+            spec_pattern: "portal-e2e/src/integration/groups/health-check/health-check-too-hard.cy.ts"
+            year_offset: 6
+            config_file: "cypress-hc.json"
+          - group: health-check-end-flow
+            spec_pattern: "portal-e2e/src/integration/groups/health-check/health-check-end-flow.cy.ts"
+            year_offset: 6
+            config_file: "cypress-hc.json"
+          - group: health-check-ui
+            spec_pattern: "portal-e2e/src/integration/groups/health-check/health-check-ui.cy.ts"
+            year_offset: 6
+            config_file: "cypress-hc.json"
 
     steps:
       - name: Clone repository from Bitbucket
