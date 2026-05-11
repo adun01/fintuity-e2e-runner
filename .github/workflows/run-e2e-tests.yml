@@ -86,6 +86,30 @@ jobs:
             spec_pattern: "portal-e2e/src/integration/groups/health-check/health-check-ui.cy.ts"
             year_offset: 6
             config_file: "cypress-hc.json"
+          - group: health-check-auth-flow
+            spec_pattern: "portal-e2e/src/integration/groups/health-check/auth-flow.cy.ts"
+            year_offset: 6
+            config_file: "cypress-hc.json"
+          - group: financial-profile-quick-pass
+            spec_pattern: "portal-e2e/src/integration/groups/financial-profile/financial-profile-quick-pass.cy.ts"
+            year_offset: 7
+            config_file: "cypress-hc.json"
+          - group: financial-profile-fastpass-married
+            spec_pattern: "portal-e2e/src/integration/groups/financial-profile/financial-profile-fastpass-married.cy.ts"
+            year_offset: 7
+            config_file: "cypress-hc.json"
+          - group: financial-profile-fullpass-single-client
+            spec_pattern: "portal-e2e/src/integration/groups/financial-profile/financial-profile-fullpass-single-client.cy.ts"
+            year_offset: 7
+            config_file: "cypress-hc.json"
+          - group: financial-profile-fullpass-married
+            spec_pattern: "portal-e2e/src/integration/groups/financial-profile/financial-profile-fullpass-married.cy.ts"
+            year_offset: 7
+            config_file: "cypress-hc.json"
+          - group: financial-profile-navigation
+            spec_pattern: "portal-e2e/src/integration/groups/financial-profile/financial-profile-navigation.cy.ts"
+            year_offset: 7
+            config_file: "cypress-hc.json"
 
     steps:
       - name: Clone repository from Bitbucket
