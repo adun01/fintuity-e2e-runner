@@ -173,7 +173,10 @@ jobs:
           BO_USER_EMAIL: ${{ secrets.BO_USER_EMAIL }}
           BO_USER_PASSWORD: ${{ secrets.BO_USER_PASSWORD }}
         run: |
-          npm run imap-proxy &
+          # Перенаправляем stdout+stderr прокси в файл, чтобы потом видеть
+          # каждую попытку чтения письма в imap-proxy.log (для диагностики
+          # ранних падений на регистрации / получении токена).
+          npm run imap-proxy > imap-proxy.log 2>&1 &
           PROXY_PID=$!
           echo "PROXY_PID=$PROXY_PID" >> $GITHUB_ENV
 
@@ -297,6 +300,28 @@ jobs:
             -F "document=@cypress-output.log" \
             -F "caption=📊 [${{ matrix.group }}] Full Cypress log"
 
+      - name: Send IMAP/Gmail diagnostic logs to Telegram
+        if: steps.tests.outcome == 'failure'
+        working-directory: project
+        run: |
+          # Полезно для падений на этапе регистрации клиента / получения
+          # верификационного письма — в стандартных request-logs этих
+          # данных нет (логи запросов пишутся только для упавших it,
+          # а хук-падения остаются без диагностики).
+          for log in gmail-debug.log imap-proxy.log; do
+            if [ -f "$log" ]; then
+              echo "📤 Sending: $log"
+              curl -s -X POST 'https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument' \
+                -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+                -F "message_thread_id=${{ secrets.TELEGRAM_TOPIC_FAILED_ID }}" \
+                -F "document=@$log" \
+                -F "caption=📨 [${{ matrix.group }}] $log"
+              sleep 1
+            else
+              echo "ℹ️ $log не найден — пропускаем"
+            fi
+          done
+
       - name: Upload test artifacts
         if: steps.tests.outcome == 'failure'
         uses: actions/upload-artifact@v4
@@ -309,6 +334,8 @@ jobs:
             project/cypress-output.log
             project/summary-full.txt
             project/error-details.txt
+            project/gmail-debug.log
+            project/imap-proxy.log
           if-no-files-found: ignore
           retention-days: 7
 
