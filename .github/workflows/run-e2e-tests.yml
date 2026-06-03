@@ -110,6 +110,34 @@ jobs:
             spec_pattern: "portal-e2e/src/integration/groups/financial-profile/financial-profile-navigation.cy.ts"
             year_offset: 7
             config_file: "cypress-hc.json"
+          - group: financial-profile-journey
+            spec_pattern: "portal-e2e/src/integration/groups/financial-profile/financial-profile-journey.cy.ts"
+            year_offset: 7
+            config_file: "cypress-hc.json"
+          - group: financial-profile-from-goal
+            spec_pattern: "portal-e2e/src/integration/groups/financial-profile/financial-profile-from-goal.cy.ts"
+            year_offset: 7
+            config_file: "cypress-hc.json"
+          - group: financial-profile-leave-without-saving-fastpass
+            spec_pattern: "portal-e2e/src/integration/groups/financial-profile/financial-profile-leave-without-saving-fastpass.cy.ts"
+            year_offset: 7
+            config_file: "cypress-hc.json"
+          - group: financial-profile-send-for-review
+            spec_pattern: "portal-e2e/src/integration/groups/financial-profile/financial-profile-send-for-review.cy.ts"
+            year_offset: 7
+            config_file: "cypress-hc.json"
+          - group: financial-profile-expired-sections
+            spec_pattern: "portal-e2e/src/integration/groups/financial-profile/financial-profile-expired-sections.cy.ts"
+            year_offset: 7
+            config_file: "cypress-hc.json"
+          - group: financial-profile-income-dialogs
+            spec_pattern: "portal-e2e/src/integration/groups/financial-profile/financial-profile-income-dialogs.cy.ts"
+            year_offset: 7
+            config_file: "cypress-hc.json"
+          - group: financial-profile-ff5889-book-meeting
+            spec_pattern: "portal-e2e/src/integration/groups/financial-profile/financial-profile-ff5889-book-meeting.cy.ts"
+            year_offset: 7
+            config_file: "cypress-hc.json"
 
     steps:
       - name: Clone repository from Bitbucket
