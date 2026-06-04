@@ -363,6 +363,7 @@ jobs:
             project/videos/
             project/screenshots/
             project/portal-e2e/requests-logs/
+            project/portal-e2e/direct-requests-logs/
             project/cypress-output.log
             project/summary-full.txt
             project/error-details.txt
@@ -447,6 +448,25 @@ jobs:
               -F "message_thread_id=${{ secrets.TELEGRAM_TOPIC_FAILED_ID }}" \
               -F "document=@\"$logfile\"" \
               -F "caption=📋 [${{ matrix.group }}] $FILENAME"
+
+            sleep 1
+          done
+
+      - name: Send direct-request logs (cy.request) to Telegram
+        # Логи прямых cy.request вызовов из тестов (registerClient,
+        # removeCurrentClient, login, oauth/token, advisor-эндпоинты и т.д.).
+        # cy.request бипасит cy.intercept, поэтому в обычные requests-logs
+        # эти запросы не попадают — нужен отдельный канал.
+        if: steps.tests.outcome == 'failure'
+        run: |
+          find project/portal-e2e/direct-requests-logs -type f -name "*.json" 2>/dev/null | while IFS= read -r logfile; do
+            FILENAME=$(basename "$logfile")
+
+            curl -s -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument" \
+              -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+              -F "message_thread_id=${{ secrets.TELEGRAM_TOPIC_FAILED_ID }}" \
+              -F "document=@\"$logfile\"" \
+              -F "caption=🔁 [${{ matrix.group }}] direct: $FILENAME"
 
             sleep 1
           done
