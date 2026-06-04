@@ -322,8 +322,40 @@ jobs:
             fi
           done
 
+      - name: Send bad-statuses.json to Telegram
+        # Отправляем даже на зелёном прогоне — это файл "скрытых" 4xx/5xx,
+        # которые проявлялись у проходящих тестов (FE мог их обработать
+        # ретраями, но это сигнал к проверке). Отсутствие файла — норма.
+        if: always()
+        working-directory: project
+        run: |
+          BAD_FILE="portal-e2e/requests-logs/bad-statuses.json"
+          if [ ! -f "$BAD_FILE" ]; then
+            echo "ℹ️ bad-statuses.json не создан (плохих статусов не было) — пропускаем"
+            exit 0
+          fi
+          COUNT=$(jq 'length' "$BAD_FILE" 2>/dev/null || echo 0)
+          if [ "$COUNT" = "0" ]; then
+            echo "ℹ️ bad-statuses.json пустой — пропускаем"
+            exit 0
+          fi
+          # Выбираем тему: на падении в failed, на зелёном — в success.
+          if [ "${{ steps.tests.outcome }}" = "failure" ]; then
+            TOPIC="${{ secrets.TELEGRAM_TOPIC_FAILED_ID }}"
+          else
+            TOPIC="${{ secrets.TELEGRAM_TOPIC_SUCCESS_ID }}"
+          fi
+          echo "📤 Sending: $BAD_FILE ($COUNT bad statuses)"
+          curl -s -X POST 'https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendDocument' \
+            -F "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -F "message_thread_id=$TOPIC" \
+            -F "document=@$BAD_FILE" \
+            -F "caption=⚠️ [${{ matrix.group }}] bad-statuses.json ($COUNT × 4xx/5xx)"
+
       - name: Upload test artifacts
-        if: steps.tests.outcome == 'failure'
+        # always: даже на зелёном прогоне поднимаем bad-statuses.json
+        # (он собирается у всех тестов, включая прошедшие).
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-results-${{ matrix.group }}-${{ inputs.environment }}-${{ github.run_number }}
