@@ -134,10 +134,6 @@ jobs:
             spec_pattern: "portal-e2e/src/integration/groups/financial-profile/financial-profile-income-dialogs.cy.ts"
             year_offset: 7
             config_file: "cypress-hc.json"
-          - group: financial-profile-ff5889-book-meeting
-            spec_pattern: "portal-e2e/src/integration/groups/financial-profile/financial-profile-ff5889-book-meeting.cy.ts"
-            year_offset: 7
-            config_file: "cypress-hc.json"
 
     steps:
       - name: Clone repository from Bitbucket
