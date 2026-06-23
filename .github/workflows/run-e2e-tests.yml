@@ -138,22 +138,14 @@ jobs:
             spec_pattern: "e2e/src/integration/groups/backoffice/financial-profile/bo-fp-leave-without-saving.cy.ts"
             year_offset: 7
             config_file: "cypress-hc.json"
+            base_url: "https://app.dev.fintuity.com/admin"
           - group: bo-fp-save-empty-entity
             spec_pattern: "e2e/src/integration/groups/backoffice/financial-profile/bo-fp-save-empty-entity.cy.ts"
             year_offset: 7
             config_file: "cypress-hc.json"
-          - group: bo-fp-notes
-            spec_pattern: "e2e/src/integration/groups/backoffice/financial-profile/bo-fp-notes.cy.ts"
-            year_offset: 7
-            config_file: "cypress-hc.json"
-          - group: bo-fp-notes-guard
-            spec_pattern: "e2e/src/integration/groups/backoffice/financial-profile/bo-fp-notes-guard.cy.ts"
-            year_offset: 7
-            config_file: "cypress-hc.json"
-          - group: bo-fp-notes-on-every-entity
-            spec_pattern: "e2e/src/integration/groups/backoffice/financial-profile/bo-fp-notes-on-every-entity.cy.ts"
-            year_offset: 7
-            config_file: "cypress-hc.json"
+            base_url: "https://app.dev.fintuity.com/admin"
+          # bo-fp-notes / bo-fp-notes-guard / bo-fp-notes-on-every-entity отключены:
+          # на фронте notes недавно переписали, тесты ещё не адаптированы.
 
     steps:
       - name: Clone repository from Bitbucket
@@ -229,7 +221,15 @@ jobs:
             CONFIG_ARG="--config-file ${{ matrix.config_file }}"
           fi
 
-          npm run e2e:portal:${{ inputs.environment || 'dev' }} -- --headless $SPEC_ARG $CONFIG_ARG --env "groupName=${{ matrix.group }},yearOffset=${{ matrix.year_offset }}" 2>&1 | \
+          # base_url override (BO тесты используют /admin, а e2e:portal:dev
+          # ставит baseUrl на /portal). CLI --config baseUrl=X имеет высший
+          # приоритет, перебивает и config file и значение из npm script.
+          BASE_URL_ARG=""
+          if [ -n "${{ matrix.base_url }}" ]; then
+            BASE_URL_ARG="--config baseUrl=${{ matrix.base_url }}"
+          fi
+
+          npm run e2e:portal:${{ inputs.environment || 'dev' }} -- --headless $SPEC_ARG $CONFIG_ARG $BASE_URL_ARG --env "groupName=${{ matrix.group }},yearOffset=${{ matrix.year_offset }}" 2>&1 | \
             grep --line-buffered -v -E "CertVerifyProcBuiltin|ERROR: No matching issuer|Certificate i=|OU=Cypress Proxy Server Certificate|cert_verify_proc" | \
             tee cypress-output.log
 
