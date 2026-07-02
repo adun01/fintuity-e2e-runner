@@ -18,7 +18,69 @@ on:
         type: string
 
 jobs:
+  # Один заранее выданный BO advisor access token на весь matrix прогон.
+  # Все параллельные ранеры используют его, никто не логинится параллельно
+  # (иначе на бэке `oauth_access_token.authentication_id = client_id+scope+username`
+  # общий для всех, и каждый новый login удаляет чужой токен → 401 каскад).
+  # client_id=fintuity-e2e имеет 2h TTL на бэке — заведомо дольше любого прогона.
+  prep-bo-token:
+    runs-on: ubuntu-latest
+    outputs:
+      bo_token: ${{ steps.mint.outputs.token }}
+    steps:
+      - id: mint
+        env:
+          BO_USER_EMAIL: ${{ secrets.BO_USER_EMAIL }}
+          BO_USER_PASSWORD: ${{ secrets.BO_USER_PASSWORD }}
+          ENVIRONMENT: ${{ inputs.environment || 'dev' }}
+        run: |
+          API_URL="https://app.${ENVIRONMENT}.fintuity.com"
+
+          # Spring OAuth DefaultTokenServices при password grant НЕ создаёт
+          # новый access token если для (client_id, scope, username) уже есть
+          # неистёкший — возвращает существующий, а expires_in считается как
+          # remaining time. Значит второй prep-job подряд мог бы получить
+          # токен с 1-минутным TTL. Обход: сначала получить текущий (пусть
+          # даже старый), revoke его, затем получить свежий с полным 2h TTL.
+          get_token() {
+            curl -sS -X POST "$API_URL/oauth/token" \
+              -H 'content-type: application/x-www-form-urlencoded' \
+              -d 'grant_type=password' \
+              -d 'scope=global' \
+              -d 'account_type=User' \
+              -d 'client_id=fintuity-e2e' \
+              --data-urlencode "username=$BO_USER_EMAIL" \
+              --data-urlencode "password=$BO_USER_PASSWORD"
+          }
+
+          OLD=$(get_token)
+          OLD_TOKEN=$(echo "$OLD" | jq -r .access_token)
+          if [ -z "$OLD_TOKEN" ] || [ "$OLD_TOKEN" = "null" ]; then
+            echo "❌ Failed to fetch initial BO token"
+            echo "Response: $OLD"
+            exit 1
+          fi
+          echo "::add-mask::$OLD_TOKEN"
+
+          curl -sS -o /dev/null -X POST "$API_URL/oauth/revoke-token" \
+            -H "Authorization: Bearer $OLD_TOKEN"
+
+          FRESH=$(get_token)
+          TOKEN=$(echo "$FRESH" | jq -r .access_token)
+          EXPIRES=$(echo "$FRESH" | jq -r .expires_in)
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+            echo "❌ Failed to mint fresh BO token after revoke"
+            echo "Response: $FRESH"
+            exit 1
+          fi
+          # add-mask прячет строку во всех последующих step logs / job outputs
+          # UI — иначе токен светился бы в plaintext в GH Actions summary.
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+          echo "✅ BO token minted (client_id=fintuity-e2e, expires_in=${EXPIRES}s)"
+
   e2e-tests:
+    needs: prep-bo-token
     runs-on: ubuntu-latest
 
     strategy:
@@ -206,6 +268,11 @@ jobs:
           GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
           BO_USER_EMAIL: ${{ secrets.BO_USER_EMAIL }}
           BO_USER_PASSWORD: ${{ secrets.BO_USER_PASSWORD }}
+          # Готовый access token BO advisor'а из prep-bo-token job — один на
+          # весь matrix. plugins/index.js:getBoToken при наличии этой env
+          # возвращает её без обращения к /oauth/token; cy.boLogin просто
+          # кладёт этот токен в BoAuthToken localStorage.
+          BO_ACCESS_TOKEN: ${{ needs.prep-bo-token.outputs.bo_token }}
           CYPRESS_BASE_URL: ${{ secrets.DEV_URL }}
           IMAP_PROXY_URL: http://localhost:3100
         run: |
