@@ -73,9 +73,6 @@ jobs:
             echo "Response: $FRESH"
             exit 1
           fi
-          # add-mask прячет строку во всех последующих step logs / job outputs
-          # UI — иначе токен светился бы в plaintext в GH Actions summary.
-          echo "::add-mask::$TOKEN"
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
           echo "✅ BO token minted (client_id=fintuity-e2e, expires_in=${EXPIRES}s)"
 
