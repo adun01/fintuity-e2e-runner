@@ -238,6 +238,27 @@ jobs:
         working-directory: project
         run: npm ci
 
+      - name: Pin IMAP proxy DNS to bypass CDN interception
+        # Некоторые runners периодически получают Akamai edge-error ("Invalid URL",
+        # Reference #9.xxx) при POST-запросах к прокси — это транзитная сеть/DNS
+        # неаккуратно резолвит наш домен куда-то в Akamai edge, который не
+        # знает наш property. Пиним DNS через /etc/hosts на нужный IP —
+        # ОС всегда резолвит имя строго в IP сервера, любые cache/CDN-подмены
+        # обходятся.
+        run: |
+          # IP берётся из DNS (получаем один раз при setup, кэшируем в hosts)
+          IP=$(getent hosts imap-proxy.god-is-your.space | awk '{print $1}' | head -1)
+          if [ -z "$IP" ]; then
+            echo "❌ не смог отрезолвить imap-proxy.god-is-your.space через getent, пробую dig"
+            IP=$(dig +short imap-proxy.god-is-your.space @1.1.1.1 | head -1)
+          fi
+          if [ -z "$IP" ]; then
+            echo "❌ DNS lookup не сработал"; exit 1
+          fi
+          echo "$IP imap-proxy.god-is-your.space" | sudo tee -a /etc/hosts
+          echo "✅ DNS pinned: imap-proxy.god-is-your.space → $IP"
+          getent hosts imap-proxy.god-is-your.space
+
       - name: Check remote IMAP Proxy availability + network diagnostics
         # Больше не поднимаем локальный прокси — используем один центральный
         # прокси ${{ vars.IMAP_PROXY_URL }}, чтобы избежать Gmail
