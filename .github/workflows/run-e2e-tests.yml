@@ -232,28 +232,21 @@ jobs:
         working-directory: project
         run: npm ci
 
-      - name: Start IMAP Proxy Server
-        working-directory: project
-        env:
-          GMAIL_USER: ${{ secrets.GMAIL_USER }}
-          GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
-          BO_USER_EMAIL: ${{ secrets.BO_USER_EMAIL }}
-          BO_USER_PASSWORD: ${{ secrets.BO_USER_PASSWORD }}
+      - name: Check remote IMAP Proxy availability
+        # Больше не поднимаем локальный прокси — используем один центральный
+        # прокси https://imap-proxy.god-is-your.space, чтобы избежать Gmail
+        # IMAP-лимита "Too many simultaneous connections" при параллельных
+        # matrix-джобах. Прокси держит одно persistent-соединение к Gmail и
+        # мультиплексирует запросы всех джоб.
         run: |
-          # Перенаправляем stdout+stderr прокси в файл, чтобы потом видеть
-          # каждую попытку чтения письма в imap-proxy.log (для диагностики
-          # ранних падений на регистрации / получении токена).
-          npm run imap-proxy > imap-proxy.log 2>&1 &
-          PROXY_PID=$!
-          echo "PROXY_PID=$PROXY_PID" >> $GITHUB_ENV
-
-          echo "⏳ Waiting for proxy server..."
+          echo "⏳ Проверяю удалённый прокси..."
           for i in {1..10}; do
-            if curl -s http://localhost:3100/health > /dev/null; then
-              echo "✅ Proxy server is ready"
+            if curl -sf https://imap-proxy.god-is-your.space/health > /dev/null; then
+              echo "✅ Remote IMAP proxy is ready"
               break
             fi
-            sleep 1
+            [ "$i" = "10" ] && { echo "❌ Remote IMAP proxy недоступен"; exit 1; }
+            sleep 3
           done
 
       - name: Run E2E tests
@@ -271,7 +264,7 @@ jobs:
           # кладёт этот токен в BoAuthToken localStorage.
           BO_ACCESS_TOKEN: ${{ needs.prep-bo-token.outputs.bo_token }}
           CYPRESS_BASE_URL: ${{ secrets.DEV_URL }}
-          IMAP_PROXY_URL: http://localhost:3100
+          IMAP_PROXY_URL: https://imap-proxy.god-is-your.space
         run: |
           SPEC_ARG=""
           if [ -n "${{ inputs.spec }}" ]; then
@@ -298,15 +291,6 @@ jobs:
             tee cypress-output.log
 
           exit ${PIPESTATUS[0]}
-
-      - name: Stop IMAP Proxy Server
-        if: always()
-        run: |
-          if [ -n "${{ env.PROXY_PID }}" ]; then
-            echo "🛑 Stopping proxy server..."
-            curl -s -X POST http://localhost:3100/close || true
-            kill ${{ env.PROXY_PID }} || true
-          fi
 
       - name: Parse test results
         if: always()
