@@ -238,20 +238,59 @@ jobs:
         working-directory: project
         run: npm ci
 
-      - name: Check remote IMAP Proxy availability
+      - name: Check remote IMAP Proxy availability + network diagnostics
         # Больше не поднимаем локальный прокси — используем один центральный
         # прокси ${{ vars.IMAP_PROXY_URL }}, чтобы избежать Gmail
         # IMAP-лимита "Too many simultaneous connections" при параллельных
         # matrix-джобах. Прокси держит одно persistent-соединение к Gmail и
         # мультиплексирует запросы всех джоб.
+        #
+        # Диагностика: печатаем всё что нужно для расследования сетевых аномалий
+        # (некоторые runners получают Akamai edge-error вместо ответа прокси).
         run: |
-          echo "⏳ Проверяю удалённый прокси..."
+          set +e   # диагностика не должна падать на ошибках сама
+          URL="${{ vars.IMAP_PROXY_URL }}"
+          echo "════ [1] Runner meta ════"
+          echo "runner arch: $(uname -a)"
+          echo "az region hint (metadata): $(curl -sf --max-time 2 -H Metadata:true 'http://169.254.169.254/metadata/instance?api-version=2021-02-01' | jq -r '.compute.location' 2>/dev/null || echo unknown)"
+          echo
+          echo "════ [2] Proxy env vars ════"
+          env | grep -iE 'proxy|http_proxy|https_proxy|no_proxy' || echo "(none set)"
+          echo
+          echo "════ [3] DNS resolution ════"
+          getent hosts imap-proxy.god-is-your.space
+          echo "resolv.conf:"
+          cat /etc/resolv.conf 2>/dev/null | head -5
+          echo "dig @1.1.1.1 (public):"
+          dig +short imap-proxy.god-is-your.space A @1.1.1.1
+          echo "dig @8.8.8.8 (public):"
+          dig +short imap-proxy.god-is-your.space A @8.8.8.8
+          echo
+          echo "════ [4] Traceroute (5 hops) ════"
+          traceroute -m 5 -w 2 imap-proxy.god-is-your.space 2>&1 | head -8 || echo "(traceroute unavailable)"
+          echo
+          echo "════ [5] curl GET /health ════"
+          curl -v --max-time 5 "$URL/health" 2>&1 | tail -20
+          echo
+          echo "════ [6] curl POST /get-code (dummy) ════"
+          curl -v --max-time 5 -X POST "$URL/get-code" \
+            -H "Content-Type: application/json" \
+            -d '{"email":"debug-runner-check@test.com","attempts":1,"delay":100}' 2>&1 | tail -20
+          echo
+          echo "════ [7] Node fetch GET /health ════"
+          node -e "fetch('$URL/health').then(r=>r.text()).then(t=>console.log('OK:',t.slice(0,200))).catch(e=>console.error('ERR:',e.message,e.cause?.message||''))"
+          echo
+          echo "════ [8] Node fetch POST /get-code (dummy) ════"
+          node -e "fetch('$URL/get-code',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:'debug-node-check@test.com',attempts:1,delay:100})}).then(r=>r.text()).then(t=>console.log('OK:',t.slice(0,200))).catch(e=>console.error('ERR:',e.message,e.cause?.message||''))"
+          echo
+          echo "════ [9] Availability retry ════"
+          set -e   # с этого места хотим падать если прокси недоступен
           for i in {1..10}; do
-            if curl -sf ${{ vars.IMAP_PROXY_URL }}/health > /dev/null; then
-              echo "✅ Remote IMAP proxy is ready"
-              break
+            if curl -sf --max-time 5 "$URL/health" > /dev/null; then
+              echo "✅ Remote IMAP proxy is ready (attempt $i)"
+              exit 0
             fi
-            [ "$i" = "10" ] && { echo "❌ Remote IMAP proxy недоступен"; exit 1; }
+            [ "$i" = "10" ] && { echo "❌ Remote IMAP proxy недоступен после 10 попыток"; exit 1; }
             sleep 3
           done
 
