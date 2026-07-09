@@ -17,6 +17,12 @@ on:
         required: false
         type: string
 
+# IMAP_PROXY_URL хранится в Repository Variables GitHub
+# (Settings → Secrets and variables → Actions → Variables tab):
+#   IMAP_PROXY_URL — https://imap-proxy.god-is-your.space
+# Доступ через ${{ vars.IMAP_PROXY_URL }}. Секреты (creds, tokens) — в
+# Secrets tab и используются через ${{ secrets.NAME }}.
+
 jobs:
   # Один заранее выданный BO advisor access token на весь matrix прогон.
   # Все параллельные ранеры используют его, никто не логинится параллельно
@@ -197,12 +203,12 @@ jobs:
             spec_pattern: "e2e/src/integration/groups/backoffice/financial-profile/bo-fp-leave-without-saving.cy.ts"
             year_offset: 7
             config_file: "cypress-hc.json"
-            base_url: "https://app.dev.fintuity.com/admin"
+            is_bo: true
           - group: bo-fp-save-empty-entity
             spec_pattern: "e2e/src/integration/groups/backoffice/financial-profile/bo-fp-save-empty-entity.cy.ts"
             year_offset: 7
             config_file: "cypress-hc.json"
-            base_url: "https://app.dev.fintuity.com/admin"
+            is_bo: true
           # bo-fp-notes / bo-fp-notes-guard / bo-fp-notes-on-every-entity отключены:
           # на фронте notes недавно переписали, тесты ещё не адаптированы.
 
@@ -234,14 +240,14 @@ jobs:
 
       - name: Check remote IMAP Proxy availability
         # Больше не поднимаем локальный прокси — используем один центральный
-        # прокси https://imap-proxy.god-is-your.space, чтобы избежать Gmail
+        # прокси ${{ vars.IMAP_PROXY_URL }}, чтобы избежать Gmail
         # IMAP-лимита "Too many simultaneous connections" при параллельных
         # matrix-джобах. Прокси держит одно persistent-соединение к Gmail и
         # мультиплексирует запросы всех джоб.
         run: |
           echo "⏳ Проверяю удалённый прокси..."
           for i in {1..10}; do
-            if curl -sf https://imap-proxy.god-is-your.space/health > /dev/null; then
+            if curl -sf ${{ vars.IMAP_PROXY_URL }}/health > /dev/null; then
               echo "✅ Remote IMAP proxy is ready"
               break
             fi
@@ -263,9 +269,10 @@ jobs:
           # возвращает её без обращения к /oauth/token; cy.boLogin просто
           # кладёт этот токен в BoAuthToken localStorage.
           BO_ACCESS_TOKEN: ${{ needs.prep-bo-token.outputs.bo_token }}
-          CYPRESS_BASE_URL: ${{ secrets.DEV_URL }}
-          IMAP_PROXY_URL: https://imap-proxy.god-is-your.space
+          IMAP_PROXY_URL: ${{ vars.IMAP_PROXY_URL }}
         run: |
+          ENV="${{ inputs.environment || 'dev' }}"
+
           SPEC_ARG=""
           if [ -n "${{ inputs.spec }}" ]; then
             SPEC_ARG="--spec ${{ inputs.spec }}"
@@ -278,15 +285,16 @@ jobs:
             CONFIG_ARG="--config-file ${{ matrix.config_file }}"
           fi
 
-          # base_url override (BO тесты используют /admin, а e2e:portal:dev
-          # ставит baseUrl на /portal). CLI --config baseUrl=X имеет высший
-          # приоритет, перебивает и config file и значение из npm script.
+          # base_url override для BO-тестов (используют /admin, а
+          # e2e:portal:$ENV ставит baseUrl на /portal). CLI --config baseUrl=X
+          # имеет высший приоритет, перебивает и config file и значение из
+          # npm script. URL зависит от выбранного environment.
           BASE_URL_ARG=""
-          if [ -n "${{ matrix.base_url }}" ]; then
-            BASE_URL_ARG="--config baseUrl=${{ matrix.base_url }}"
+          if [ "${{ matrix.is_bo }}" = "true" ]; then
+            BASE_URL_ARG="--config baseUrl=https://app.${ENV}.fintuity.com/admin"
           fi
 
-          npm run e2e:portal:${{ inputs.environment || 'dev' }} -- --headless $SPEC_ARG $CONFIG_ARG $BASE_URL_ARG --env "groupName=${{ matrix.group }},yearOffset=${{ matrix.year_offset }}" 2>&1 | \
+          npm run e2e:portal:${ENV} -- --headless $SPEC_ARG $CONFIG_ARG $BASE_URL_ARG --env "groupName=${{ matrix.group }},yearOffset=${{ matrix.year_offset }}" 2>&1 | \
             grep --line-buffered -v -E "CertVerifyProcBuiltin|ERROR: No matching issuer|Certificate i=|OU=Cypress Proxy Server Certificate|cert_verify_proc" | \
             tee cypress-output.log
 
