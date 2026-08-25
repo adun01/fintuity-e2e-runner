@@ -31,6 +31,12 @@ jobs:
   # client_id=fintuity-e2e имеет 2h TTL на бэке — заведомо дольше любого прогона.
   prep-bo-token:
     runs-on: ubuntu-latest
+    # Environment-специфичные secrets (BO_USER_EMAIL / BO_USER_PASSWORD)
+    # берутся из выбранного GH Environment (см. repo → Settings → Environments).
+    # Каждый env (dev/staging/preprod) держит свои значения под одним именем;
+    # остальные secrets (GMAIL_*, TELEGRAM_*, BITBUCKET_*) остаются repo-level
+    # и fallback'аются автоматически.
+    environment: ${{ inputs.environment || 'dev' }}
     outputs:
       bo_token: ${{ steps.mint.outputs.token }}
     steps:
@@ -85,6 +91,9 @@ jobs:
   e2e-tests:
     needs: prep-bo-token
     runs-on: ubuntu-latest
+    # То же environment — matrix-джобы читают BO_USER_EMAIL/PASSWORD через
+    # env: block ниже (для локального Cypress fallback без BO_ACCESS_TOKEN).
+    environment: ${{ inputs.environment || 'dev' }}
 
     strategy:
       fail-fast: false
