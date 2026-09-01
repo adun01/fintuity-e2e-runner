@@ -294,13 +294,17 @@ jobs:
           echo
           echo "════ [9] Availability retry ════"
           set -e   # с этого места хотим падать если прокси недоступен
-          for i in {1..10}; do
-            if curl -sf --max-time 5 "$URL/health" > /dev/null; then
-              echo "✅ Remote IMAP proxy is ready (attempt $i)"
+          MAX_ATTEMPTS=20
+          CURL_TIMEOUT=10
+          SLEEP_BETWEEN=15
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            if curl -sf --max-time $CURL_TIMEOUT "$URL/health" > /dev/null; then
+              echo "✅ Remote IMAP proxy is ready (attempt $i/$MAX_ATTEMPTS)"
               exit 0
             fi
-            [ "$i" = "10" ] && { echo "❌ Remote IMAP proxy недоступен после 10 попыток"; exit 1; }
-            sleep 3
+            echo "… attempt $i/$MAX_ATTEMPTS failed, sleeping ${SLEEP_BETWEEN}s"
+            [ "$i" = "$MAX_ATTEMPTS" ] && { echo "❌ Remote IMAP proxy недоступен после $MAX_ATTEMPTS попыток"; exit 1; }
+            sleep $SLEEP_BETWEEN
           done
 
       - name: Run E2E tests
