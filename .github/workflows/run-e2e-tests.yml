@@ -93,142 +93,78 @@ jobs:
           echo "token=$TOKEN" >> $GITHUB_OUTPUT
           echo "✅ BO token minted (client_id=fintuity-e2e, expires_in=${EXPIRES}s)"
 
+  # Строит matrix.include динамически — берём полный набор групп из HEREDOC
+  # ниже и оставляем только те, что перечислены в inputs.groups (CSV).
+  # ВАЖНО: при добавлении новой группы обновить ОБА места — этот HEREDOC
+  # И default в inputs.groups (наверху файла).
+  build-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.build.outputs.matrix }}
+    steps:
+      - id: build
+        env:
+          GROUPS_CSV: ${{ inputs.groups }}
+        run: |
+          set -euo pipefail
+          cat > /tmp/full.json <<'JSON'
+          [
+            {"group":"booking-pages",   "spec_pattern":"e2e/src/integration/groups/portal/booking-pages/*.cy.ts",   "year_offset":0},
+            {"group":"booking-shared",  "spec_pattern":"e2e/src/integration/groups/portal/booking-shared/*.cy.ts",  "year_offset":1},
+            {"group":"booking-service", "spec_pattern":"e2e/src/integration/groups/portal/booking-service/*.cy.ts", "year_offset":2},
+            {"group":"booking-emails",  "spec_pattern":"e2e/src/integration/groups/portal/booking-emails/*.cy.ts",  "year_offset":3},
+            {"group":"auth",            "spec_pattern":"e2e/src/integration/groups/portal/auth/**/*.cy.ts",          "year_offset":4},
+            {"group":"goal-cards",      "spec_pattern":"e2e/src/integration/groups/portal/goal-cards/by-goal-type/*.cy.ts", "year_offset":4},
+            {"group":"health-check-sequential",     "spec_pattern":"e2e/src/integration/groups/portal/health-check/health-check-sequential.cy.ts",     "year_offset":6, "config_file":"cypress-hc.json"},
+            {"group":"health-check-single-client",  "spec_pattern":"e2e/src/integration/groups/portal/health-check/health-check-single-client.cy.ts",  "year_offset":6, "config_file":"cypress-hc.json"},
+            {"group":"health-check-navigation",     "spec_pattern":"e2e/src/integration/groups/portal/health-check/health-check-navigation.cy.ts",     "year_offset":6, "config_file":"cypress-hc.json"},
+            {"group":"health-check-roundtrip",      "spec_pattern":"e2e/src/integration/groups/portal/health-check/health-check-roundtrip.cy.ts",      "year_offset":6, "config_file":"cypress-hc.json"},
+            {"group":"health-check-fastpass",       "spec_pattern":"e2e/src/integration/groups/portal/health-check/health-check-fastpass.cy.ts",       "year_offset":6, "config_file":"cypress-hc.json"},
+            {"group":"health-check-route-guards",   "spec_pattern":"e2e/src/integration/groups/portal/health-check/health-check-route-guards.cy.ts",   "year_offset":6, "config_file":"cypress-hc.json"},
+            {"group":"health-check-toc",            "spec_pattern":"e2e/src/integration/groups/portal/health-check/health-check-toc.cy.ts",            "year_offset":6, "config_file":"cypress-hc.json"},
+            {"group":"health-check-too-hard",       "spec_pattern":"e2e/src/integration/groups/portal/health-check/health-check-too-hard.cy.ts",       "year_offset":6, "config_file":"cypress-hc.json"},
+            {"group":"health-check-end-flow",       "spec_pattern":"e2e/src/integration/groups/portal/health-check/health-check-end-flow.cy.ts",       "year_offset":6, "config_file":"cypress-hc.json"},
+            {"group":"health-check-ui",             "spec_pattern":"e2e/src/integration/groups/portal/health-check/health-check-ui.cy.ts",             "year_offset":6, "config_file":"cypress-hc.json"},
+            {"group":"health-check-auth-flow",      "spec_pattern":"e2e/src/integration/groups/portal/health-check/auth-flow.cy.ts",                   "year_offset":6, "config_file":"cypress-hc.json"},
+            {"group":"financial-profile-quick-pass",                     "spec_pattern":"e2e/src/integration/groups/portal/financial-profile/financial-profile-quick-pass.cy.ts",                     "year_offset":7, "config_file":"cypress-hc.json"},
+            {"group":"financial-profile-fastpass-married",               "spec_pattern":"e2e/src/integration/groups/portal/financial-profile/financial-profile-fastpass-married.cy.ts",               "year_offset":7, "config_file":"cypress-hc.json"},
+            {"group":"financial-profile-fullpass-single-client",         "spec_pattern":"e2e/src/integration/groups/portal/financial-profile/financial-profile-fullpass-single-client.cy.ts",         "year_offset":7, "config_file":"cypress-hc.json"},
+            {"group":"financial-profile-fullpass-married",               "spec_pattern":"e2e/src/integration/groups/portal/financial-profile/financial-profile-fullpass-married.cy.ts",               "year_offset":7, "config_file":"cypress-hc.json"},
+            {"group":"financial-profile-navigation",                     "spec_pattern":"e2e/src/integration/groups/portal/financial-profile/financial-profile-navigation.cy.ts",                     "year_offset":7, "config_file":"cypress-hc.json"},
+            {"group":"financial-profile-journey",                        "spec_pattern":"e2e/src/integration/groups/portal/financial-profile/financial-profile-journey.cy.ts",                        "year_offset":7, "config_file":"cypress-hc.json"},
+            {"group":"financial-profile-from-goal",                      "spec_pattern":"e2e/src/integration/groups/portal/financial-profile/financial-profile-from-goal.cy.ts",                      "year_offset":7, "config_file":"cypress-hc.json"},
+            {"group":"financial-profile-leave-without-saving-fastpass",  "spec_pattern":"e2e/src/integration/groups/portal/financial-profile/financial-profile-leave-without-saving-fastpass.cy.ts",  "year_offset":7, "config_file":"cypress-hc.json"},
+            {"group":"financial-profile-send-for-review",                "spec_pattern":"e2e/src/integration/groups/portal/financial-profile/financial-profile-send-for-review.cy.ts",                "year_offset":7, "config_file":"cypress-hc.json"},
+            {"group":"financial-profile-expired-sections",               "spec_pattern":"e2e/src/integration/groups/portal/financial-profile/financial-profile-expired-sections.cy.ts",               "year_offset":7, "config_file":"cypress-hc.json"},
+            {"group":"financial-profile-income-dialogs",                 "spec_pattern":"e2e/src/integration/groups/portal/financial-profile/financial-profile-income-dialogs.cy.ts",                 "year_offset":7, "config_file":"cypress-hc.json"},
+            {"group":"bo-fp-leave-without-saving", "spec_pattern":"e2e/src/integration/groups/backoffice/financial-profile/bo-fp-leave-without-saving.cy.ts", "year_offset":7, "config_file":"cypress-hc.json", "is_bo":true},
+            {"group":"bo-fp-save-empty-entity",    "spec_pattern":"e2e/src/integration/groups/backoffice/financial-profile/bo-fp-save-empty-entity.cy.ts",    "year_offset":7, "config_file":"cypress-hc.json", "is_bo":true}
+          ]
+          JSON
+
+          SELECTED=$(printf '%s' "$GROUPS_CSV" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' | jq -R . | jq -s .)
+          MATRIX=$(jq --argjson sel "$SELECTED" -c '{include: map(select(.group as $g | $sel | index($g)))}' /tmp/full.json)
+
+          COUNT=$(echo "$MATRIX" | jq '.include | length')
+          if [ "$COUNT" = "0" ]; then
+            echo "❌ No groups selected — inputs.groups='$GROUPS_CSV' did not match any known group"
+            exit 1
+          fi
+
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "Selected $COUNT groups:"
+          echo "$MATRIX" | jq -r '.include[].group' | sed 's/^/  - /'
+
   e2e-tests:
-    needs: prep-bo-token
+    needs: [prep-bo-token, build-matrix]
     runs-on: ubuntu-latest
     # То же environment — matrix-джобы читают BO_USER_EMAIL/PASSWORD через
     # env: block ниже (для локального Cypress fallback без BO_ACCESS_TOKEN).
     environment: ${{ inputs.environment || 'dev' }}
-    # Скипаем всю matrix-инстанцию если её группа не в inputs.groups.
-    # Оборачиваем обе стороны запятыми через format(), чтобы избежать
-    # substring-совпадений (напр. 'auth' в CSV не должен матчить 'health-check-auth-flow').
-    if: contains(format(',{0},', inputs.groups), format(',{0},', matrix.group))
 
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - group: booking-pages
-            spec_pattern: "e2e/src/integration/groups/portal/booking-pages/*.cy.ts"
-            year_offset: 0
-          - group: booking-shared
-            spec_pattern: "e2e/src/integration/groups/portal/booking-shared/*.cy.ts"
-            year_offset: 1
-          - group: booking-service
-            spec_pattern: "e2e/src/integration/groups/portal/booking-service/*.cy.ts"
-            year_offset: 2
-          - group: booking-emails
-            spec_pattern: "e2e/src/integration/groups/portal/booking-emails/*.cy.ts"
-            year_offset: 3
-          - group: auth
-            spec_pattern: "e2e/src/integration/groups/portal/auth/**/*.cy.ts"
-            year_offset: 4
-          - group: goal-cards
-            spec_pattern: "e2e/src/integration/groups/portal/goal-cards/by-goal-type/*.cy.ts"
-            year_offset: 4
-#          - group: kyc
-#            spec_pattern: "e2e/src/integration/groups/portal/kyc/**/*.cy.ts"
-#            year_offset: 5
-          - group: health-check-sequential
-            spec_pattern: "e2e/src/integration/groups/portal/health-check/health-check-sequential.cy.ts"
-            year_offset: 6
-            config_file: "cypress-hc.json"
-          - group: health-check-single-client
-            spec_pattern: "e2e/src/integration/groups/portal/health-check/health-check-single-client.cy.ts"
-            year_offset: 6
-            config_file: "cypress-hc.json"
-          - group: health-check-navigation
-            spec_pattern: "e2e/src/integration/groups/portal/health-check/health-check-navigation.cy.ts"
-            year_offset: 6
-            config_file: "cypress-hc.json"
-          - group: health-check-roundtrip
-            spec_pattern: "e2e/src/integration/groups/portal/health-check/health-check-roundtrip.cy.ts"
-            year_offset: 6
-            config_file: "cypress-hc.json"
-          - group: health-check-fastpass
-            spec_pattern: "e2e/src/integration/groups/portal/health-check/health-check-fastpass.cy.ts"
-            year_offset: 6
-            config_file: "cypress-hc.json"
-          - group: health-check-route-guards
-            spec_pattern: "e2e/src/integration/groups/portal/health-check/health-check-route-guards.cy.ts"
-            year_offset: 6
-            config_file: "cypress-hc.json"
-          - group: health-check-toc
-            spec_pattern: "e2e/src/integration/groups/portal/health-check/health-check-toc.cy.ts"
-            year_offset: 6
-            config_file: "cypress-hc.json"
-          - group: health-check-too-hard
-            spec_pattern: "e2e/src/integration/groups/portal/health-check/health-check-too-hard.cy.ts"
-            year_offset: 6
-            config_file: "cypress-hc.json"
-          - group: health-check-end-flow
-            spec_pattern: "e2e/src/integration/groups/portal/health-check/health-check-end-flow.cy.ts"
-            year_offset: 6
-            config_file: "cypress-hc.json"
-          - group: health-check-ui
-            spec_pattern: "e2e/src/integration/groups/portal/health-check/health-check-ui.cy.ts"
-            year_offset: 6
-            config_file: "cypress-hc.json"
-          - group: health-check-auth-flow
-            spec_pattern: "e2e/src/integration/groups/portal/health-check/auth-flow.cy.ts"
-            year_offset: 6
-            config_file: "cypress-hc.json"
-          - group: financial-profile-quick-pass
-            spec_pattern: "e2e/src/integration/groups/portal/financial-profile/financial-profile-quick-pass.cy.ts"
-            year_offset: 7
-            config_file: "cypress-hc.json"
-          - group: financial-profile-fastpass-married
-            spec_pattern: "e2e/src/integration/groups/portal/financial-profile/financial-profile-fastpass-married.cy.ts"
-            year_offset: 7
-            config_file: "cypress-hc.json"
-          - group: financial-profile-fullpass-single-client
-            spec_pattern: "e2e/src/integration/groups/portal/financial-profile/financial-profile-fullpass-single-client.cy.ts"
-            year_offset: 7
-            config_file: "cypress-hc.json"
-          - group: financial-profile-fullpass-married
-            spec_pattern: "e2e/src/integration/groups/portal/financial-profile/financial-profile-fullpass-married.cy.ts"
-            year_offset: 7
-            config_file: "cypress-hc.json"
-          - group: financial-profile-navigation
-            spec_pattern: "e2e/src/integration/groups/portal/financial-profile/financial-profile-navigation.cy.ts"
-            year_offset: 7
-            config_file: "cypress-hc.json"
-          - group: financial-profile-journey
-            spec_pattern: "e2e/src/integration/groups/portal/financial-profile/financial-profile-journey.cy.ts"
-            year_offset: 7
-            config_file: "cypress-hc.json"
-          - group: financial-profile-from-goal
-            spec_pattern: "e2e/src/integration/groups/portal/financial-profile/financial-profile-from-goal.cy.ts"
-            year_offset: 7
-            config_file: "cypress-hc.json"
-          - group: financial-profile-leave-without-saving-fastpass
-            spec_pattern: "e2e/src/integration/groups/portal/financial-profile/financial-profile-leave-without-saving-fastpass.cy.ts"
-            year_offset: 7
-            config_file: "cypress-hc.json"
-          - group: financial-profile-send-for-review
-            spec_pattern: "e2e/src/integration/groups/portal/financial-profile/financial-profile-send-for-review.cy.ts"
-            year_offset: 7
-            config_file: "cypress-hc.json"
-          - group: financial-profile-expired-sections
-            spec_pattern: "e2e/src/integration/groups/portal/financial-profile/financial-profile-expired-sections.cy.ts"
-            year_offset: 7
-            config_file: "cypress-hc.json"
-          - group: financial-profile-income-dialogs
-            spec_pattern: "e2e/src/integration/groups/portal/financial-profile/financial-profile-income-dialogs.cy.ts"
-            year_offset: 7
-            config_file: "cypress-hc.json"
-          - group: bo-fp-leave-without-saving
-            spec_pattern: "e2e/src/integration/groups/backoffice/financial-profile/bo-fp-leave-without-saving.cy.ts"
-            year_offset: 7
-            config_file: "cypress-hc.json"
-            is_bo: true
-          - group: bo-fp-save-empty-entity
-            spec_pattern: "e2e/src/integration/groups/backoffice/financial-profile/bo-fp-save-empty-entity.cy.ts"
-            year_offset: 7
-            config_file: "cypress-hc.json"
-            is_bo: true
-          # bo-fp-notes / bo-fp-notes-guard / bo-fp-notes-on-every-entity отключены:
-          # на фронте notes недавно переписали, тесты ещё не адаптированы.
+      matrix: ${{ fromJson(needs.build-matrix.outputs.matrix) }}
 
     steps:
       - name: Clone repository from Bitbucket
