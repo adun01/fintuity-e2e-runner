@@ -16,6 +16,11 @@ on:
         description: 'Test spec (optional, leave empty to run all tests)'
         required: false
         type: string
+      groups:
+        description: 'Comma-separated groups to run. Remove any to skip.'
+        required: false
+        type: string
+        default: 'auth,bo-fp-leave-without-saving,bo-fp-save-empty-entity,booking-emails,booking-pages,booking-service,booking-shared,financial-profile-expired-sections,financial-profile-fastpass-married,financial-profile-from-goal,financial-profile-fullpass-married,financial-profile-fullpass-single-client,financial-profile-income-dialogs,financial-profile-journey,financial-profile-leave-without-saving-fastpass,financial-profile-navigation,financial-profile-quick-pass,financial-profile-send-for-review,goal-cards,health-check-auth-flow,health-check-end-flow,health-check-fastpass,health-check-navigation,health-check-roundtrip,health-check-route-guards,health-check-sequential,health-check-single-client,health-check-toc,health-check-too-hard,health-check-ui'
 
 # IMAP_PROXY_URL хранится в Repository Variables GitHub
 # (Settings → Secrets and variables → Actions → Variables tab):
@@ -94,6 +99,10 @@ jobs:
     # То же environment — matrix-джобы читают BO_USER_EMAIL/PASSWORD через
     # env: block ниже (для локального Cypress fallback без BO_ACCESS_TOKEN).
     environment: ${{ inputs.environment || 'dev' }}
+    # Скипаем всю matrix-инстанцию если её группа не в inputs.groups.
+    # Оборачиваем обе стороны запятыми через format(), чтобы избежать
+    # substring-совпадений (напр. 'auth' в CSV не должен матчить 'health-check-auth-flow').
+    if: contains(format(',{0},', inputs.groups), format(',{0},', matrix.group))
 
     strategy:
       fail-fast: false
