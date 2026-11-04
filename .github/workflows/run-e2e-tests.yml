@@ -16,6 +16,10 @@ on:
         description: 'Test spec (optional, leave empty to run all tests)'
         required: false
         type: string
+      max_parallel:
+        description: 'Сколько групп гнать одновременно. Пусто — без ограничения (до лимита аккаунта).'
+        required: false
+        type: string
       browser:
         description: 'Browser: electron (встроенный) или chrome. Chrome принимает потолок памяти вкладки.'
         required: false
@@ -195,6 +199,12 @@ jobs:
 
     strategy:
       fail-fast: false
+      # Сколько групп идёт одновременно. Ограничение нужно не из-за машин — каждая
+      # группа получает свою, — а из-за общего на всех почтового ящика и прокси к
+      # нему: регистрация клиента ждёт письмо с кодом, и при двадцати группах разом
+      # прокси не успевает за отведённые три минуты. В прогоне 41839926931 так упало
+      # семь групп из восьми, все с «getRegistrationTokenInEmail timed out».
+      max-parallel: ${{ fromJson(inputs.max_parallel || '0') || 256 }}
       matrix: ${{ fromJson(needs.build-matrix.outputs.matrix) }}
 
     steps:
