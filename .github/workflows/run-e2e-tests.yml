@@ -16,6 +16,18 @@ on:
         description: 'Test spec (optional, leave empty to run all tests)'
         required: false
         type: string
+      browser:
+        description: 'Browser: electron (встроенный) или chrome. Chrome принимает потолок памяти вкладки.'
+        required: false
+        default: 'electron'
+        type: choice
+        options:
+          - electron
+          - chrome
+      heap_mb:
+        description: 'Потолок памяти вкладки в МБ (работает только в chrome). Пусто — как по умолчанию (~3,7 ГБ).'
+        required: false
+        type: string
       groups:
         description: 'Comma-separated groups to run. Remove any to skip.'
         required: false
@@ -285,6 +297,10 @@ jobs:
           # кладёт этот токен в BoAuthToken localStorage.
           BO_ACCESS_TOKEN: ${{ needs.prep-bo-token.outputs.bo_token }}
           IMAP_PROXY_URL: ${{ vars.IMAP_PROXY_URL }}
+          # Потолок памяти вкладки: плагин e2e/plugins/index.js добавляет аргумент
+          # запуска браузера, если переменная задана. Встроенный браузер Cypress
+          # (Electron) этот аргумент игнорирует, Chrome его принимает.
+          CYPRESS_HEAP_MB: ${{ inputs.heap_mb }}
         run: |
           ENV="${{ inputs.environment || 'dev' }}"
 
@@ -309,7 +325,12 @@ jobs:
             BASE_URL_ARG="--config baseUrl=https://app.${ENV}.fintuity.com/admin"
           fi
 
-          npm run e2e:portal:${ENV} -- --headless $SPEC_ARG $CONFIG_ARG $BASE_URL_ARG --env "groupName=${{ matrix.group }},yearOffset=${{ matrix.year_offset }}" 2>&1 | \
+          BROWSER_ARG=""
+          if [ -n "${{ inputs.browser }}" ] && [ "${{ inputs.browser }}" != "electron" ]; then
+            BROWSER_ARG="--browser ${{ inputs.browser }}"
+          fi
+
+          npm run e2e:portal:${ENV} -- --headless $BROWSER_ARG $SPEC_ARG $CONFIG_ARG $BASE_URL_ARG --env "groupName=${{ matrix.group }},yearOffset=${{ matrix.year_offset }}" 2>&1 | \
             grep --line-buffered -v -E "CertVerifyProcBuiltin|ERROR: No matching issuer|Certificate i=|OU=Cypress Proxy Server Certificate|cert_verify_proc" | \
             tee cypress-output.log
 
