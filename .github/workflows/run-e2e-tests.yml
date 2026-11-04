@@ -210,7 +210,28 @@ jobs:
     steps:
       - name: Clone repository from Bitbucket
         run: |
-          git clone --depth 1 https://${{ secrets.BITBUCKET_USERNAME }}:${{ secrets.BITBUCKET_API_TOKEN }}@bitbucket.org/fintuity-team/e2e-tests.git project
+          # Репозиторий тянут все задания матрицы разом, и Bitbucket на это
+          # отвечает отказом: «fatal: protocol error: unexpected 'Error running
+          # git: resource exhausted'». Так в прогоне 41858632038 упали четыре
+          # задания, не начав тестов. Поэтому: случайная задержка перед первой
+          # попыткой (чтобы не ломиться одновременно) и повторы с увеличением
+          # паузы — отказ по перегрузке временный.
+          sleep $((RANDOM % 20))
+
+          for attempt in 1 2 3 4 5; do
+            rm -rf project
+            if git clone --depth 1 https://${{ secrets.BITBUCKET_USERNAME }}:${{ secrets.BITBUCKET_API_TOKEN }}@bitbucket.org/fintuity-team/e2e-tests.git project; then
+              break
+            fi
+            if [ "$attempt" = "5" ]; then
+              echo "Bitbucket так и не отдал репозиторий за 5 попыток"
+              exit 1
+            fi
+            WAIT=$((attempt * 15 + RANDOM % 10))
+            echo "Клонирование не удалось (попытка $attempt/5), жду ${WAIT}с"
+            sleep $WAIT
+          done
+
           cd project
           git log -1 --oneline
 
