@@ -399,6 +399,11 @@ jobs:
 
       - name: Send results to Telegram
         if: always()
+        # Уведомление — не результат прогона. Сетевая осечка у Telegram
+        # красила зелёную группу в красный: прогон #406,
+        # financial-profile-fullpass-single-client — 26 тестов из 26 прошли,
+        # а шаг упал с кодом 35 от curl (не состоялось TLS-рукопожатие).
+        continue-on-error: true
         working-directory: project
         run: |
           SUMMARY_SHORT=$(cat summary-short.txt)
@@ -421,14 +426,30 @@ jobs:
             TEXT="$HEADER%0A%0A🚀 <b>Группа запущена</b>%0AГруппа: <code>${{ matrix.group }}</code>%0AОкружение: <code>${{ inputs.environment || 'dev' }}</code>%0A%0A$STATUS <b>Упала!</b>%0A%0A📊 <b>Результаты:</b>%0A<pre>$SUMMARY_SHORT</pre>%0AСпецификаций: <b>$TOTAL_SPECS</b>%0AУпало: <b>$TOTAL_FAILED</b>%0A%0A📸 Файлы ниже ⬇️"
           fi
 
-          RESPONSE=$(curl -s -X POST 'https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage' \
-            -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-            -d "message_thread_id=$TARGET_TOPIC_ID" \
-            -d "text=$TEXT" \
-            -d "parse_mode=HTML")
+          # -sS вместо -s: текст ошибки curl нужен в логе, иначе остаётся
+          # только код выхода и причину не видно.
+          MESSAGE_ID=""
+          for attempt in 1 2 3; do
+            RESPONSE=$(curl -sS --max-time 30 -X POST 'https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage' \
+              -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+              -d "message_thread_id=$TARGET_TOPIC_ID" \
+              -d "text=$TEXT" \
+              -d "parse_mode=HTML") || true
+            MESSAGE_ID=$(echo "$RESPONSE" | jq -r '.result.message_id // empty' 2>/dev/null || true)
+            if [ -n "$MESSAGE_ID" ]; then
+              break
+            fi
+            echo "⚠️ отчёт не ушёл (попытка $attempt/3): ${RESPONSE:-<пусто>}"
+            sleep $((attempt * 5))
+          done
 
-          MESSAGE_ID=$(echo "$RESPONSE" | jq -r '.result.message_id')
-          echo "MESSAGE_ID=$MESSAGE_ID" >> $GITHUB_ENV
+          if [ -n "$MESSAGE_ID" ]; then
+            # Пустой MESSAGE_ID — осознанный признак «ответы прикреплять некуда»:
+            # следующие шаги проверяют его и просто пропускаются.
+            echo "MESSAGE_ID=$MESSAGE_ID" >> $GITHUB_ENV
+          else
+            echo "⚠️ отчёт в Telegram отправить не удалось — результат прогона это не меняет"
+          fi
 
       # ─────────────────────────────────────────────────────────────────────
       # Telegram delivery layout (новый порядок, чтобы не было каши):
@@ -456,6 +477,7 @@ jobs:
         # которые проявлялись у проходящих тестов (FE мог их обработать
         # ретраями, но это сигнал к проверке). Отсутствие файла — норма.
         if: always() && env.MESSAGE_ID != ''
+        continue-on-error: true
         working-directory: project
         run: |
           BAD_FILE="e2e/requests-logs/bad-statuses.json"
@@ -502,6 +524,7 @@ jobs:
 
       - name: Send run-level diagnostic files (failure only)
         if: steps.tests.outcome == 'failure' && env.MESSAGE_ID != ''
+        continue-on-error: true
         working-directory: project
         run: |
           send_doc() {
@@ -537,6 +560,7 @@ jobs:
         # тот же префикс, что у describe-пути в screenshot, поэтому 30 alnum
         # надёжно совпадают.
         if: steps.tests.outcome == 'failure' && env.MESSAGE_ID != ''
+        continue-on-error: true
         working-directory: project
         run: |
           set -euo pipefail
