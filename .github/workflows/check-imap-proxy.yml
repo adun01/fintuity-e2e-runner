@@ -1,0 +1,43 @@
+# Проверка, что центральный imap-proxy доступен С РАННЕРА GitHub.
+# Тесты не запускает — только сеть, TLS и одну настоящую ручку прокси.
+# Нужен потому, что прокси слушает нестандартный порт 8444, и «работает
+# с моей машины» не означает «работает из Actions».
+name: Check IMAP proxy
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Проверяю прокси
+        run: |
+          set -e
+          URL="${{ vars.IMAP_PROXY_URL }}"
+          HOST="$(printf '%s' "$URL" | sed -E 's#^https?://##; s#[:/].*$##')"
+          echo "URL:  $URL"
+          echo "HOST: $HOST"
+
+          echo "════ [1] DNS ════"
+          getent hosts "$HOST" || echo "(getent не нашёл — смотрим дальше)"
+
+          echo "════ [2] GET /health через curl ════"
+          curl -sS --max-time 20 "$URL/health"; echo
+
+          echo "════ [3] GET /health через node fetch ════"
+          node -e "fetch('$URL/health').then(r=>r.text()).then(t=>console.log('OK:',t.slice(0,300))).catch(e=>{console.error('ERR:',e.message,e.cause?.message||''); process.exit(1)})"
+
+          echo "════ [4] POST /get-code на несуществующий адрес (ждём 404) ════"
+          code=$(curl -s -o /tmp/body -w '%{http_code}' --max-time 30 \
+            -X POST "$URL/get-code" \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"ci-proxy-check@example.invalid","attempts":2,"delay":1000}')
+          echo "HTTP $code — $(cat /tmp/body)"
+          if [ "$code" != "404" ]; then
+            echo "::error::Ожидали 404 для несуществующего адреса, получили $code"
+            exit 1
+          fi
+
+          echo "✅ Прокси доступен с раннера GitHub"
