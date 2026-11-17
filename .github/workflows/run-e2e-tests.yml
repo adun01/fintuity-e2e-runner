@@ -32,6 +32,11 @@ on:
         description: 'Потолок памяти вкладки в МБ (работает только в chrome). Пусто — как по умолчанию (~3,7 ГБ).'
         required: false
         type: string
+      force:
+        description: 'Запустить, даже если другой прогон ещё идёт. Обычно такой запуск пропускается.'
+        required: false
+        default: false
+        type: boolean
       groups:
         description: 'Comma-separated groups to run. Remove any to skip.'
         required: false
@@ -47,12 +52,56 @@ on:
 # Secrets tab и используются через ${{ secrets.NAME }}.
 
 jobs:
+  # Два прогона разом жить не могут: prep-bo-token ниже отзывает общий токен
+  # бэкофиса, и уже идущий прогон сыплется в 401. Поэтому запуск, прилетевший
+  # поверх работающего (обычно из TeamCity после сборки dev), целиком
+  # пропускается — ни токен не трогаем, ни тесты не гоняем.
+  #
+  # Считаем только прогоны СТАРШЕ этого (id меньше): если два запуска стартуют
+  # одновременно, пропустится младший, а не оба сразу.
+  guard:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    outputs:
+      busy: ${{ steps.check.outputs.busy }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          set -euo pipefail
+          if [ "$FORCE" = "true" ]; then
+            echo "busy=false" >> "$GITHUB_OUTPUT"
+            echo "force=true — проверку не делаем, запускаемся." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          gh api "repos/$REPO/actions/workflows/run-e2e-tests.yml/runs?per_page=100" > runs.json
+          FILTER='.workflow_runs[] | select(.status != "completed") | select(.id < $me)'
+          COUNT=$(jq --argjson me "$RUN_ID" "[$FILTER] | length" runs.json)
+          if [ "$COUNT" -gt 0 ]; then
+            echo "busy=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Прогон пропущен"
+              echo "Уже идёт другой прогон ($COUNT):"
+              jq -r --argjson me "$RUN_ID" "$FILTER | \"- [#\(.id)](\(.html_url)) — \(.status), старт \(.run_started_at)\"" runs.json
+            } | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "busy=false" >> "$GITHUB_OUTPUT"
+            echo "Других прогонов нет — запускаемся." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
   # Один заранее выданный BO advisor access token на весь matrix прогон.
   # Все параллельные ранеры используют его, никто не логинится параллельно
   # (иначе на бэке `oauth_access_token.authentication_id = client_id+scope+username`
   # общий для всех, и каждый новый login удаляет чужой токен → 401 каскад).
   # client_id=fintuity-e2e имеет 2h TTL на бэке — заведомо дольше любого прогона.
   prep-bo-token:
+    needs: guard
+    if: needs.guard.outputs.busy != 'true'
     runs-on: ubuntu-latest
     # Environment-специфичные secrets (BO_USER_EMAIL / BO_USER_PASSWORD)
     # берутся из выбранного GH Environment (см. repo → Settings → Environments).
@@ -116,6 +165,8 @@ jobs:
   # ВАЖНО: при добавлении новой группы обновить ОБА места — этот HEREDOC
   # И default в inputs.groups (наверху файла).
   build-matrix:
+    needs: guard
+    if: needs.guard.outputs.busy != 'true'
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.build.outputs.matrix }}
