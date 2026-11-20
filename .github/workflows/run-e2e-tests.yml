@@ -32,6 +32,11 @@ on:
         description: 'Потолок памяти вкладки в МБ (работает только в chrome). Пусто — как по умолчанию (~3,7 ГБ).'
         required: false
         type: string
+      debug_cypress:
+        description: 'Писать внутренний след прокси Cypress (ищем запросы, зависшие между браузером и сетью). Файл кладётся в артефакт только у упавших групп.'
+        required: false
+        default: true
+        type: boolean
       force:
         description: 'Запустить, даже если другой прогон ещё идёт. Обычно такой запуск пропускается.'
         required: false
@@ -390,6 +395,35 @@ jobs:
         run: |
           ENV="${{ inputs.environment || 'dev' }}"
 
+          # Снимок состояния машины раз в 2 секунды на всё время прогона.
+          # Нужен, чтобы по метке зависшего запроса сразу увидеть, голодала
+          # ли машина в ту секунду: раннер даёт всего 2 ядра и 7 ГБ, и Chrome
+          # с прокси Cypress делят их между собой.
+          (
+            echo "время_utc load1 mem_доступно_МБ swap_МБ топ_процессы_по_памяти"
+            while true; do
+              TS=$(date -u +%H:%M:%S.%3N)
+              LOAD=$(cut -d' ' -f1 /proc/loadavg)
+              MEMA=$(awk '/MemAvailable/{printf "%d", $2/1024}' /proc/meminfo)
+              SWAP=$(awk '/SwapFree/{f=$2} /SwapTotal/{t=$2} END{printf "%d", (t-f)/1024}' /proc/meminfo)
+              TOP=$(ps -eo rss=,comm= --sort=-rss 2>/dev/null | head -4 | awk '{printf "%s=%dМБ ", $2, $1/1024}')
+              echo "$TS $LOAD $MEMA $SWAP $TOP"
+              sleep 2
+            done
+          ) > runner-metrics.txt 2>/dev/null &
+          METRICS_PID=$!
+          trap 'kill $METRICS_PID 2>/dev/null || true' EXIT
+
+          # Внутренний след прокси Cypress. Он печатает по каждому запросу,
+          # когда прокси его принял, когда отдал нашему перехватчику и когда
+          # отправил дальше — ровно те шаги, между которыми 19.11 потерялся
+          # PUT расходов. Пишем в отдельный файл (это stderr), чтобы не мешать
+          # обычному выводу.
+          if [ "${{ inputs.debug_cypress }}" != "false" ]; then
+            export DEBUG='cypress:net-stubbing*,cypress:proxy:http*'
+            export DEBUG_COLORS=false
+          fi
+
           SPEC_ARG=""
           if [ -n "${{ inputs.spec }}" ]; then
             SPEC_ARG="--spec ${{ inputs.spec }}"
@@ -416,11 +450,44 @@ jobs:
             BROWSER_ARG="--browser ${{ inputs.browser }}"
           fi
 
-          npm run e2e:portal:${ENV} -- --headless $BROWSER_ARG $SPEC_ARG $CONFIG_ARG $BASE_URL_ARG --env "groupName=${{ matrix.group }},yearOffset=${{ matrix.year_offset }}" 2>&1 | \
-            grep --line-buffered -v -E "CertVerifyProcBuiltin|ERROR: No matching issuer|Certificate i=|OU=Cypress Proxy Server Certificate|cert_verify_proc" | \
-            tee cypress-output.log
+          # Оболочка задания идёт с -e: без этого упавший прогон оборвал бы шаг
+          # прямо здесь, и ни след прокси не обрезался бы, ни сборщик метрик не
+          # остановился. Код возврата забираем сами и отдаём в конце.
+          set +e
 
-          exit ${PIPESTATUS[0]}
+          # Со следом прокси его поток (stderr) уводим в файл, иначе он забьёт
+          # лог задания; без следа оставляем прежнее поведение — stderr в общий
+          # вывод, чтобы ошибки Cypress были видны сразу.
+          if [ -n "$DEBUG" ]; then
+            npm run e2e:portal:${ENV} -- --headless $BROWSER_ARG $SPEC_ARG $CONFIG_ARG $BASE_URL_ARG --env "groupName=${{ matrix.group }},yearOffset=${{ matrix.year_offset }}" 2>cypress-debug.log | \
+              grep --line-buffered -v -E "CertVerifyProcBuiltin|ERROR: No matching issuer|Certificate i=|OU=Cypress Proxy Server Certificate|cert_verify_proc" | \
+              tee cypress-output.log
+            STATUS=${PIPESTATUS[0]}
+            # Строки самого Cypress (не следа) всё же показываем — их немного.
+            grep -v -E '^ *cypress:(net-stubbing|proxy)' cypress-debug.log | tail -40 || true
+          else
+            npm run e2e:portal:${ENV} -- --headless $BROWSER_ARG $SPEC_ARG $CONFIG_ARG $BASE_URL_ARG --env "groupName=${{ matrix.group }},yearOffset=${{ matrix.year_offset }}" 2>&1 | \
+              grep --line-buffered -v -E "CertVerifyProcBuiltin|ERROR: No matching issuer|Certificate i=|OU=Cypress Proxy Server Certificate|cert_verify_proc" | \
+              tee cypress-output.log
+            STATUS=${PIPESTATUS[0]}
+          fi
+
+          kill $METRICS_PID 2>/dev/null || true
+
+          # След прокси весит сотни мегабайт, и целиком он не нужен: падение
+          # обрывает прогон, значит интересное — в хвосте. У зелёной группы
+          # файл не нужен вовсе.
+          if [ -f cypress-debug.log ]; then
+            if [ "$STATUS" = "0" ]; then
+              rm -f cypress-debug.log
+            else
+              tail -c 80000000 cypress-debug.log | gzip > cypress-debug.tail.log.gz
+              rm -f cypress-debug.log
+              echo "След прокси сохранён: $(du -h cypress-debug.tail.log.gz | cut -f1)"
+            fi
+          fi
+
+          exit $STATUS
 
       - name: Parse test results
         if: always()
@@ -756,6 +823,8 @@ jobs:
             project/e2e/direct-requests-logs/
             project/email-parse-failures/
             project/cypress-output.log
+            project/runner-metrics.txt
+            project/cypress-debug.tail.log.gz
             project/summary-full.txt
             project/error-details.txt
             project/gmail-debug.log
