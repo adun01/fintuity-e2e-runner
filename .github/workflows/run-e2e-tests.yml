@@ -400,7 +400,8 @@ jobs:
           # ли машина в ту секунду: раннер даёт всего 2 ядра и 7 ГБ, и Chrome
           # с прокси Cypress делят их между собой.
           (
-            echo "машина: ядер $(nproc), памяти $(awk '/MemTotal/{printf \"%d\", $2/1024}' /proc/meminfo) МБ, $(uname -r)"
+            MEMTOTAL=$(awk '/MemTotal/{printf "%d", $2/1024}' /proc/meminfo)
+            echo "машина: ядер $(nproc), памяти ${MEMTOTAL} МБ, $(uname -r)"
             echo "время_utc load1 mem_доступно_МБ swap_МБ топ_процессы_по_памяти"
             while true; do
               TS=$(date -u +%H:%M:%S.%3N)
